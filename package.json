@@ -1,6 +1,6 @@
 {
   "name": "doctree-packet-cli",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "dtp — DocTree Packet CLI：树形结构化、Append-Only 版本化、JSONL 存储的文档数据包管理工具",
   "type": "module",
   "bin": {

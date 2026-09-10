@@ -111,7 +111,8 @@ D update fixNNN --status review && D update fixNNN --status approved
 
 ## 参数边界检查清单（回归易漏项）
 
-- **数值解析**：不要用 `parseInt` 裸解析（`1.5`/`2abc`/`1e2`/`0x10` 会被静默截断）——须严格 `^\d+$` 且范围校验。
+- **数值解析**：不要用 `parseInt` 裸解析（`1.5`/`2abc`/`1e2`/`0x10` 会被静默截断）——须严格 `^\d+$` 且范围校验。覆盖 `history --limit`、`query --limit`、`ls --limit`。
+- **父域过滤**：`query --parent <ref>`（id/唯一前缀/语义路径）仅返回直接子节点，父节点不存在报 `NOT_FOUND`、空值报 `USAGE`；`ls --limit`/`query --limit` 非法值报 `USAGE` exit2、合法值 JSON 含 `total`。
 - **空值 fail-open**：显式空过滤值（`--tag ""`/`--keyword ""`/`--path ""`）应报错，绝不能退化为「返回全集」。
 - **退出码**：用法错误（含 `INVALID_TYPE`/`INVALID_STATUS`）= 2，业务错误 = 1。
 - **错误消息**：歧义/缺失要给出候选或行动指引，而非仅数量或裸栈。

@@ -2,10 +2,12 @@ import { canonicalJson } from './hash.js'
 import { normalizePathString } from './path.js'
 
 // 组合过滤：同一维度多个取值为 OR（任一命中），跨维度为 AND
-// 支持维度：tags / types / statuses / ext（key=value 深比较）/ keyword（标题+描述+正文）/ path（全路径前缀）
+// 支持维度：tags / types / statuses / ext（key=value 深比较）/ keyword（标题+描述+正文）/ path（全路径前缀）/ parentId（父节点直接子节点）
 export function filterNodes(packet, criteria = {}) {
   let list = [...packet.nodes.values()]
-  const { tags = [], types = [], statuses = [], ext = [], keyword, pathPrefix } = criteria
+  const { tags = [], types = [], statuses = [], ext = [], keyword, pathPrefix, parentId } = criteria
+
+  if (parentId != null) list = list.filter((n) => n.parent_id === parentId)
 
   if (types.length) list = list.filter((n) => types.includes(n.node_type))
   if (statuses.length) list = list.filter((n) => statuses.includes(n.status))

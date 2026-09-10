@@ -15,6 +15,7 @@ export const command = {
     ext: { arg: 'k=v', multi: true, desc: '扩展字段精确匹配（跨字段为“与”）' },
     keyword: { arg: 'text', desc: '全文关键字（标题+描述+正文，不区分大小写）' },
     path: { arg: 'path', desc: '语义路径前缀（从根开始）' },
+    parent: { arg: 'ref', desc: '仅返回该父节点的直接子节点（id/唯一前缀/语义路径）' },
     limit: { arg: 'n', desc: '最多返回条数' },
   },
   example: ['dtp query --tag P0 --status approved', 'dtp query --keyword 验证码 --type requirement'],
@@ -42,7 +43,9 @@ export const command = {
     requireNonEmpty('status', statuses)
     requireNonEmptyRaw('keyword')
     requireNonEmptyRaw('path')
+    requireNonEmptyRaw('parent')
 
+    const packet = ctx.load()
     const criteria = {
       tags,
       types: types.map((t) => normalizeNodeType(t)),
@@ -51,7 +54,10 @@ export const command = {
       keyword: o.keyword,
       pathPrefix: o.path,
     }
-    const packet = ctx.load()
+    if (o.parent !== undefined) {
+      // 复用 resolveRef：id / 唯一前缀 / 语义路径均可，仅取直接子节点（与 ls <folder> 一致）
+      criteria.parentId = packet.resolveRef(o.parent).id
+    }
     // 不可解析的路径前缀永远 0 命中：与其静默空集，不如与 get-path 一致报 NOT_FOUND
     // （打错路径 / Git Bash MSYS 转换损坏时给调用方明确信号）
     if (o.path && !packet.findByPath(o.path)) {
