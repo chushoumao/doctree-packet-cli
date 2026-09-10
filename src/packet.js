@@ -78,7 +78,9 @@ export class Packet {
     }
 
     const pathCount = new Map()
-    const rootPath = '/' + encodeSegment(root.title)
+    // 索引键与 pathById 统一为归一化形式（NFC + 段 trim），与查询侧对称（ISSUE-017/018）；
+    // 根键归一化一次即可，子键在循环内增量拼接（父键已归一化 + 单段 encodeSegment NFC）
+    const rootPath = normalizePathString('/' + encodeSegment(root.title))
     this.pathIndex.set(rootPath, root.id)
     this.pathById.set(root.id, rootPath)
     pathCount.set(rootPath, 1)
@@ -92,6 +94,8 @@ export class Packet {
           continue
         }
         visited.add(child.id)
+        // 父键已归一化，新段经 encodeSegment（NFC + 转义）后拼接即归一化形式，
+        // 避免热循环内全路径重归一化的开销（perf 基线 10k 节点）
         const cp = path + '/' + encodeSegment(child.title)
         this.pathIndex.set(cp, child.id)
         this.pathById.set(child.id, cp)
@@ -153,7 +157,10 @@ export class Packet {
   }
 
   findByPath(pathText) {
-    return this.pathIndex.get(normalizePathString(pathText)) ?? null
+    const key = normalizePathString(pathText)
+    // OPTIM-013：/ 直达根（不注册进索引，保持索引与节点一一对应的 verify 不变量）
+    if (key === '/') return this.root()?.id ?? null
+    return this.pathIndex.get(key) ?? null
   }
 
   // 节点引用解析：精确 id → 唯一前缀（git 风格）；以 '/' 开头则按语义路径
@@ -221,7 +228,11 @@ export class Packet {
   // （而非事后由路径索引以笼统的 STRUCTURE 拒绝）
   assertTitleAvailable(parentId, title, excludeId = null) {
     for (const sibling of this.childrenOf(parentId)) {
-      if (sibling.id !== excludeId && sibling.title === title) {
+      // NFC 比较：形式差异（NFC/NFD，macOS/部分输入法）不应绕过同级唯一性（ISSUE-017）
+      if (
+        sibling.id !== excludeId &&
+        String(sibling.title).normalize('NFC') === String(title).normalize('NFC')
+      ) {
         throw new DtpError(
           'EXISTS',
           `同父节点下已存在同名标题「${title}」（冲突节点 ${sibling.id}；同级标题须唯一，请更换标题）`
