@@ -41,3 +41,7 @@ jobs:
 
       - name: Run tests
         run: npm test
+        env:
+          # 共享 runner 慢于本地 M 系（实测加载 10k 节点 562-887ms vs 本地 259ms），
+          # 放宽加载预算至 1500ms 仍可拦截热循环级回归（实测 2418ms）；本地默认保持 500ms 严格预算
+          DTP_PERF_BUDGET_MS: 1500
