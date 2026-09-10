@@ -1,5 +1,7 @@
 # dtp — DocTree Packet CLI
 
+[![CI](https://github.com/chushoumao/doctree-packet-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/chushoumao/doctree-packet-cli/actions/workflows/ci.yml)
+
 树形结构化 · Append-Only 版本化 · JSONL 存储的文档数据包管理工具（Node.js 实现，**零运行时依赖**）。
 
 面向三类使用者：

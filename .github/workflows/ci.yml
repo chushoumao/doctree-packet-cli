@@ -1,0 +1,43 @@
+# CI：push / PR 到 main 时在多 Node 版本上跑全量测试
+# 项目为零运行时依赖 ESM，无需 install/缓存，直接 node --test
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# 同分支新推送取消仍在跑的旧任务
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }} · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        # engines.node >=18.17：验证下限 18 与当前各 LTS/开发版
+        node: [18, 20, 22, 24]
+        include:
+          # 对齐本地 macOS 开发环境（当前 LTS + 开发版）
+          - os: macos-latest
+            node: 22
+          - os: macos-latest
+            node: 24
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Run tests
+        run: npm test
