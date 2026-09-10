@@ -91,3 +91,69 @@ node bin/dtp.js add f_issues  --title "ISSUE-001 标题" --type requirement --pa
 node bin/dtp.js verify --packet ./my-regression.dtp    # 9 项完整性校验
 node bin/dtp.js tree  --packet ./my-regression.dtp     # 人工复核骨架
 ```
+
+---
+
+## 用户故事包模版
+
+需求工作流：**讨论 → 用户故事(US) → 拆分需求 → 任务(TASK) → 实现 → 验收闭环**。
+使用方法见技能 `.agents/skills/user-stories/SKILL.md`。
+
+### 使用方式
+
+```bash
+# 1) 拷贝一份作为本次需求工作的实际数据包
+cp docs/templates/user-stories.template.dtp  ./my-stories.dtp
+
+# 2) 改包名（元数据 + 根节点标题）
+node ./bin/dtp.js update tpl_root --title "我的需求板" --packet ./my-stories.dtp
+
+# 3) 登记故事与任务
+node bin/dtp.js add f_stories --title "US-001 作为…" --type requirement \
+  --tags story --ext priority=P2 --packet ./my-stories.dtp
+node bin/dtp.js add us001 --title "TASK-001 …" --type requirement \
+  --ext story=US-001 --ext acceptance='["GIVEN…WHEN…THEN…"]' --packet ./my-stories.dtp
+```
+
+### 目录骨架
+
+```
+用户故事包 (root · folder)
+└── 故事池   (f_stories · folder)
+    └── US-NNN 用户故事 (requirement)   讨论/拆分记录在正文四段
+        └── TASK-NNN 任务 (requirement)  ★ ext.acceptance 验收标准
+```
+
+### 命名约定
+
+- 号段全局递增补零：`US-###` / `TASK-###`；节点 `id` 为 `us###` / `task###`。
+- TASK 编号跨故事全局唯一，便于引用；任务挂载为所属故事的直接子节点。
+
+### 扩展字段（extensions）
+
+| 字段 | 取值 | 说明 |
+|------|------|------|
+| `acceptance` | JSON 数组（task 必填） | 验收标准，逐条可复核；验收时对照回填 |
+| `story` | `US-NNN`（task 必填） | 所属故事冗余引用，便于 `query --ext story=…` |
+| `priority` | `P0`–`P3` | 优先级，冗余到 tags |
+| `done_evidence` | 字符串 | 验收证据（approved 前回填） |
+| `assignee` / `estimate` | 可选 | 执行人 / 预估 |
+
+### 状态语义
+
+| 节点 | draft | review | approved | archived |
+|------|-------|--------|----------|----------|
+| US | 讨论中 | 已定稿待拆分 | 已排期实现中 | 搁置/放弃 |
+| TASK | 待实现 | 已实现待验收 | 验收通过 | 取消 |
+
+### content 体例
+
+- **US 四段**（缺一不可）：`【背景与讨论】`（讨论要点，随讨论追加）、`【用户故事】`（作为…我希望…以便…）、`【需求拆分】`（编号 ①②③，每条可落为任务）、`【验收口径】`（故事级口径，task 的 acceptance 由它派生）。
+- **TASK 三段**：`【实现说明】`（文件/接口/命令）、`【验收标准】`（与 acceptance 数组一致）、`【验收记录】`（完成后回填逐条复核结果）。
+
+### 自检
+
+```bash
+node bin/dtp.js verify --packet ./my-stories.dtp
+node bin/dtp.js query --tag task --status review --packet ./my-stories.dtp   # 待验收任务面
+```

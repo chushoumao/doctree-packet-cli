@@ -37,10 +37,21 @@ export function printNodeDetail(packet, node) {
   console.log(label('哈希') + color.dim(node.hash))
   console.log(label('标签') + (node.tags?.length ? node.tags.join(', ') : color.dim('（无）')))
   const ext = Object.entries(node.extensions ?? {})
-  console.log(
-    label('扩展') +
-      (ext.length ? ext.map(([k, v]) => `${k}=${JSON.stringify(v)}`).join('  ') : color.dim('（无）'))
-  )
+  if (ext.length) {
+    // OPTIM-016：数组值逐条编号分行（验收标准对照场景），标量保持同行；--json 契约不变
+    const parts = ext.map(([k, v]) => {
+      if (Array.isArray(v) && v.length) {
+        const items = v
+          .map((item, i) => `  ${String(i + 1).padStart(2)}. ${typeof item === 'string' ? item : JSON.stringify(item)}`)
+          .join('\n     ')
+        return `${k}:\n     ${items}`
+      }
+      return `${k}=${JSON.stringify(v)}`
+    })
+    console.log(label('扩展') + parts.join('\n     '))
+  } else {
+    console.log(label('扩展') + color.dim('（无）'))
+  }
   if (node.description) console.log(label('描述') + node.description.replaceAll('\n', '\n     '))
   if (node.content) {
     console.log(color.dim('── 正文 ──'))

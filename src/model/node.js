@@ -84,6 +84,11 @@ export function parseExtAssignments(pairs) {
       throw new DtpError('USAGE', `扩展字段名不能包含 "."（"${key}"，与 changelog 字段名冲突）`)
     }
     const rawVal = s.slice(eq + 1)
+    // ISSUE-022：等号后为空拒绝（如 acceptance= 静默存空串会让必填约束失效）；
+    // 显式引号空串 k="" 与 JSON null 仍允许（明确意图），置空用 null
+    if (!rawVal.trim()) {
+      throw new DtpError('USAGE', `扩展字段 "${key}" 值不能为空（如需置空请用 ${key}=null）`)
+    }
     let val
     try {
       val = JSON.parse(rawVal)

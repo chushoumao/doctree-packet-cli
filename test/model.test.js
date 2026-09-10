@@ -57,7 +57,8 @@ test('parseExtAssignments 解析 JSON 字面量与字符串', () => {
     flag: true,
     obj: { a: 1 },
   })
-  assert.deepEqual(parseExtAssignments(['empty=']), { empty: '' })
+  // ISSUE-022：等号后空值拒绝（空串静默入库会让必填约束失效；置空用 null）
+  assert.throws(() => parseExtAssignments(['empty=']), DtpError)
   assert.throws(() => parseExtAssignments(['noeq']), DtpError)
   assert.throws(() => parseExtAssignments(['a.b=1']), DtpError) // 点号与 changelog 字段名冲突
 })
