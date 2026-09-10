@@ -1,0 +1,13 @@
+# 依赖与构建产物
+node_modules/
+coverage/
+
+# 本地临时数据包与运行产物
+tmp/
+
+# 工具生成的备份（append-only 写入会轮换 .bak.N）
+*.bak.*
+
+# 系统与编辑器
+.DS_Store
+*.log
