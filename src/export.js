@@ -9,33 +9,23 @@ function metaLine(n) {
 }
 
 export function toMarkdown(packet, rootId) {
-  const lines = []
+  // ISSUE-019：按节点分块拼接，content 原样嵌入（仅 trim 拼接边界），
+  // 不做全文空行压缩——原 replace(/\n{3,}/g) 会无差别作用于正文/代码块内部，静默改写原文
+  const blocks = []
   const walk = (id, depth) => {
     const n = packet.nodes.get(id)
     if (!n) return
     const level = Math.min(depth + 1, 6)
-    lines.push('#'.repeat(level) + ' ' + n.title)
-    lines.push('')
-    lines.push('> ' + metaLine(n))
+    const head = ['#'.repeat(level) + ' ' + n.title, '', '> ' + metaLine(n)]
     if (n.description) {
-      lines.push('')
-      lines.push(
-        '> ' +
-          n.description
-            .split('\n')
-            .map((l) => l.trim())
-            .join('\n> ')
-      )
+      head.push('', '> ' + n.description.split('\n').map((l) => l.trim()).join('\n> '))
     }
-    if (n.content) {
-      lines.push('')
-      lines.push(n.content)
-    }
-    lines.push('')
+    const content = n.content ? String(n.content).trim() : ''
+    blocks.push(content ? [...head, '', content].join('\n') : head.join('\n'))
     for (const c of packet.childrenOf(id)) walk(c.id, depth + 1)
   }
   walk(rootId, 0)
-  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n'
+  return blocks.join('\n\n') + '\n'
 }
 
 function escapeHtml(s) {
@@ -57,45 +47,52 @@ function contentToHtml(content) {
 }
 
 export function toHtml(packet, rootId) {
-  const name = packet.meta.name
-  const toc = []
+  // OPTIM-014：title 取导出根标题（整包导出时等于包名，向后兼容）
+  const rootTitle = packet.nodes.get(rootId)?.title ?? packet.meta.name
+  // ISSUE-020：TOC 改为 li 内嵌套 ul 的树结构（原平级 ul 直嵌不合法且空格缩进被浏览器折叠）
+  const tocRoot = { children: [] }
   const body = []
-  const walk = (id, depth) => {
+  const walk = (id, depth, tocParent) => {
     const n = packet.nodes.get(id)
     if (!n) return
-    const anchor = `node-${n.id.slice(0, 8)}`
+    // ISSUE-021：anchor 用完整 id（唯一）；slice(0,8) 截断在自定义长 id 下可碰撞
+    const anchor = `node-${n.id}`
+    let tocEntry = tocParent
     if (depth > 0) {
-      while (toc.length <= depth) toc.push([])
-      toc[depth].push({ anchor, title: n.title })
+      tocEntry = { anchor, title: n.title, children: [] }
+      tocParent.children.push(tocEntry)
     }
     const level = Math.min(depth + 1, 6)
     const ext = Object.entries(n.extensions ?? {})
       .map(([k, v]) => `${escapeHtml(k)}=${escapeHtml(JSON.stringify(v))}`)
       .join(' · ')
-    body.push(`    <section id="${anchor}" class="depth-${depth}">`)
+    body.push(`    <section id="${escapeHtml(anchor)}" class="depth-${depth}">`)
     body.push(`      <h${level}>${escapeHtml(n.title)}</h${level}>`)
     body.push(`      <div class="meta">${escapeHtml(metaLine(n))}${ext ? ' · ' + ext : ''}</div>`)
     if (n.description) body.push(`      <blockquote>${escapeHtml(n.description).replaceAll('\n', '<br>')}</blockquote>`)
     if (n.content) body.push(`      <div class="content">\n      ${contentToHtml(n.content)}\n      </div>`)
-    for (const c of packet.childrenOf(id)) walk(c.id, depth + 1)
+    for (const c of packet.childrenOf(id)) walk(c.id, depth + 1, tocEntry)
     body.push('    </section>')
   }
-  walk(rootId, 0)
+  walk(rootId, 0, tocRoot)
 
-  const tocHtml = toc
-    .map(
-      (lvl, i) =>
-        `${'  '.repeat(i)}<ul>\n` +
-        lvl.map((e) => `${'  '.repeat(i + 1)}<li><a href="#${e.anchor}">${escapeHtml(e.title)}</a></li>`).join('\n') +
-        `\n${'  '.repeat(i)}</ul>`
-    )
-    .join('\n')
+  const renderToc = (entries) =>
+    entries.length
+      ? '\n<ul>\n' +
+        entries
+          .map(
+            (e) =>
+              `    <li><a href="#${escapeHtml(e.anchor)}">${escapeHtml(e.title)}</a>${renderToc(e.children)}</li>`
+          )
+          .join('\n') +
+        '\n  </ul>'
+      : ''
 
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>${escapeHtml(name)}</title>
+<title>${escapeHtml(rootTitle)}</title>
 <style>
   body { font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; max-width: 860px; margin: 2rem auto; padding: 0 1rem; color: #24292f; line-height: 1.7; }
   h1 { border-bottom: 2px solid #d0d7de; padding-bottom: .4rem; }
@@ -108,11 +105,9 @@ export function toHtml(packet, rootId) {
 </style>
 </head>
 <body>
-  <h1>${escapeHtml(name)}</h1>
   <p class="meta">packet ${escapeHtml(packet.meta.packet_id)} · ${escapeHtml(packet.meta.version)} · ${packet.nodes.size} nodes</p>
   <nav>
-    <strong>目录</strong>
-${tocHtml}
+    <strong>目录</strong>${renderToc(tocRoot.children)}
   </nav>
   <main>
 ${body.join('\n')}

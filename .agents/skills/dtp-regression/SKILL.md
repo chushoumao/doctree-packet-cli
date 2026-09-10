@@ -114,6 +114,7 @@ D update fixNNN --status review && D update fixNNN --status approved
 - **数值解析**：不要用 `parseInt` 裸解析（`1.5`/`2abc`/`1e2`/`0x10` 会被静默截断）——须严格 `^\d+$` 且范围校验。覆盖 `history --limit`、`query --limit`、`ls --limit`。
 - **父域过滤**：`query --parent <ref>`（id/唯一前缀/语义路径）仅返回直接子节点，父节点不存在报 `NOT_FOUND`、空值报 `USAGE`；`ls --limit`/`query --limit` 非法值报 `USAGE` exit2、合法值 JSON 含 `total`。
 - **路径与多语言**：语义路径键已 NFC 归一化 + 段级 trim（NFD 输入、段首尾空白/全角空格均可命中；同级视觉重名报 `EXISTS`）；`get-path /` 直达根；纯空白路径报 `USAGE`「路径为空」。回归时用 NFC（`caf\u00e9`）与 NFD（`cafe\u0301`）字面量构造形式差异用例，覆盖 CJK/RTL/emoji/转义斜杠 `\/`。
+- **export 输出保真**：md 正文 content 原样嵌入（连续空行/代码块内空行不得被压缩——禁止对拼接结果做全文正则替换）；html TOC 为 li 内嵌套 ul 树、anchor 用完整 id（截断可碰撞）、`<title>`/页首唯一 h1 取导出根。回归时构造多连续空行正文 + 前 8 位相同的双长 id 用例。
 - **空值 fail-open**：显式空过滤值（`--tag ""`/`--keyword ""`/`--path ""`）应报错，绝不能退化为「返回全集」。
 - **退出码**：用法错误（含 `INVALID_TYPE`/`INVALID_STATUS`）= 2，业务错误 = 1。
 - **错误消息**：歧义/缺失要给出候选或行动指引，而非仅数量或裸栈。
