@@ -1,0 +1,44 @@
+{
+  "name": "user-stories",
+  "version": "1.0.0",
+  "comment": "用户故事工作流模版（.agents/skills/user-stories/SKILL.md 的机器化表达）。故事 US-NNN 登记在故事池，任务 TASK-NNN 挂所属故事下；task 的 acceptance 必须是 JSON 数组、approved 前须回填 done_evidence；故事层不要求 done_evidence（approved = 排期/交付语义）。",
+  "skeleton": [
+    {
+      "id": "f_stories",
+      "title": "故事池",
+      "type": "folder",
+      "tags": ["story"],
+      "description": "用户故事，按提出顺序编号 US-NNN；讨论与需求拆分记录在故事正文，任务为故事子节点",
+      "comment": "唯一容器；US/TASK 编号全局递增补零（us###/task###）"
+    }
+  ],
+  "rules": [
+    {
+      "id": "story",
+      "comment": "故事节点：四段正文齐全 + priority 必填；approved 无需 done_evidence",
+      "scope": { "parent": "f_stories" },
+      "match": { "id": "^us\\d{3}$", "title": "^US-\\d{3}" },
+      "id_pattern": "^us\\d{3}$",
+      "title_pattern": "^US-\\d{3} ",
+      "ext_required": ["priority"],
+      "tags_require": ["story"],
+      "content_sections": ["【背景与讨论】", "【用户故事】", "【需求拆分】", "【验收口径】"],
+      "numbering": { "title_prefix": "US", "id_prefix": "us", "digits": 3 }
+    },
+    {
+      "id": "task",
+      "comment": "任务节点（挂故事下）：acceptance 结构化数组 + story 引用回指所属故事 + approved 须有 done_evidence",
+      "scope": { "parent": "story" },
+      "match": { "id": "^task\\d{3}$" },
+      "id_pattern": "^task\\d{3}$",
+      "title_pattern": "^TASK-\\d{3} ",
+      "ext_required": ["story", "priority", "acceptance"],
+      "ext_arrays": ["acceptance"],
+      "ref_exists": ["story"],
+      "tags_require": ["task"],
+      "content_sections": ["【实现说明】", "【验收标准】", "【验收记录】"],
+      "status_evidence": { "approved": ["done_evidence"] },
+      "numbering": { "title_prefix": "TASK", "id_prefix": "task", "digits": 3 }
+    }
+  ]
+}

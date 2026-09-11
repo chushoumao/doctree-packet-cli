@@ -42,7 +42,7 @@ dtp（DocTree Packet CLI）是一个**零依赖** Node.js 命令行工具，用 
 
 ## 回归任务包
 
-- 真实包 `docs/dtp-regression.dtp`；可复用骨架 `docs/templates/dtp-regression.template.dtp`（说明见 `docs/templates/README.md`）。
+- 真实包 `docs/dtp-regression.dtp`；模版单一事实源 `docs/templates/dtp-regression.schema.json`（已 bind；新包用 `dtp init <名> --template <schema>` 派生，旧 `.template.dtp` 已退役为历史样例）。
 - 骨架：`问题登记 f_issues` / `优化建议 f_optim` / `修复登记 f_fixlog`。
 - 默认在当前包继续登记，号段全局递增补零：`ISSUE-###`/`OPTIM-###`/`FIX-###`，`id` 为 `issue###`/`optim###`/`fix###`。
 - **登记与修复一律通过 CLI 自举完成，不要手改 JSONL。**

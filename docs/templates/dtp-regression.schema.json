@@ -1,0 +1,59 @@
+{
+  "name": "dtp-regression",
+  "version": "1.0.0",
+  "comment": "dogfooding 回归任务包模版（.agents/skills/dtp-regression/SKILL.md 的机器化表达）。三个收集夹：问题登记(ISSUE)/优化建议(OPTIM)/修复登记(FIX)；ISSUE/OPTIM 登记 severity+area，修复完成回填 fixed_in 后置 approved；FIX 必有 fixed_in+issues（files 可选）。",
+  "skeleton": [
+    {
+      "id": "f_issues",
+      "title": "问题登记",
+      "type": "folder",
+      "comment": "可复现缺陷：ISSUE-NNN（id issue###）"
+    },
+    {
+      "id": "f_optim",
+      "title": "优化建议",
+      "type": "folder",
+      "comment": "非缺陷改进点（含「已确认非问题」登记）：OPTIM-NNN（id optim###）"
+    },
+    {
+      "id": "f_fixlog",
+      "title": "修复登记",
+      "type": "index",
+      "comment": "每个修复一条：FIX-NNN（id fix###），记录根因/改动/验证"
+    }
+  ],
+  "rules": [
+    {
+      "id": "issue",
+      "comment": "缺陷登记：severity/area 必填；approved 时须已回填 fixed_in",
+      "scope": { "parent": "f_issues" },
+      "match": { "id": "^issue\\d{3}$", "title": "^ISSUE-\\d{3}" },
+      "id_pattern": "^issue\\d{3}$",
+      "title_pattern": "^ISSUE-\\d{3} ",
+      "ext_required": ["severity", "area"],
+      "status_evidence": { "approved": ["fixed_in"] },
+      "numbering": { "title_prefix": "ISSUE", "id_prefix": "issue", "digits": 3 }
+    },
+    {
+      "id": "optim",
+      "comment": "优化建议：severity/area 必填；approved 不强制 fixed_in（确认类 OPTIM 可无修复版本，语义歧义见 TASK-007 汇报）",
+      "scope": { "parent": "f_optim" },
+      "match": { "id": "^optim\\d{3}$", "title": "^OPTIM-\\d{3}" },
+      "id_pattern": "^optim\\d{3}$",
+      "title_pattern": "^OPTIM-\\d{3} ",
+      "ext_required": ["severity", "area"],
+      "numbering": { "title_prefix": "OPTIM", "id_prefix": "optim", "digits": 3 }
+    },
+    {
+      "id": "fix",
+      "comment": "修复登记：fixed_in/issues 必填（files 可选）；带 fix 生命周期标签",
+      "scope": { "parent": "f_fixlog" },
+      "match": { "id": "^fix\\d{3}$", "title": "^FIX-\\d{3}" },
+      "id_pattern": "^fix\\d{3}$",
+      "title_pattern": "^FIX-\\d{3} ",
+      "ext_required": ["fixed_in", "issues"],
+      "tags_require": ["fix"],
+      "numbering": { "title_prefix": "FIX", "id_prefix": "fix", "digits": 3 }
+    }
+  ]
+}

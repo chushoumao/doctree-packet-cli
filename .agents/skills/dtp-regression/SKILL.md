@@ -16,8 +16,9 @@ description: 用 dtp 回归任务包驱动 dogfooding 式迭代：统一登记�
 
 ## 任务包与骨架
 
-- 真实包：`docs/dtp-regression.dtp`（**默认继续在此包登记**）。
-- 可复用骨架：`docs/templates/dtp-regression.template.dtp`；格式说明：`docs/templates/README.md`。
+- 真实包：`docs/dtp-regression.dtp`（**默认继续在此包登记**，已绑定模版 `docs/templates/dtp-regression.schema.json`）。
+- 模版单一事实源：`docs/templates/dtp-regression.schema.json`（声明式 schema）；新建回归包：`dtp init <包名> --template docs/templates/dtp-regression.schema.json`。
+- 旧骨架 `dtp-regression.template.dtp` **已退役**（历史样例，勿再拷贝使用）。
 - 固定三个收集夹：`f_issues`（问题登记 · folder）/ `f_optim`（优化建议 · folder）/ `f_fixlog`（修复登记 · index）。
 
 ## 命令约定
@@ -84,7 +85,7 @@ D update fixNNN --status review && D update fixNNN --status approved
 收尾顺序（缺一不可）：
 1. `npm test` 全绿（记录用例数）。
 2. 登记 FIX，回填 `fixed_in`，把 ISSUE/OPTIM 置 `approved`。
-3. `D verify`（应 `ok:true`，9 项检查通过）。
+3. `D verify`（应 `ok:true`，9 项检查通过）+ `D lint`（error 级违规为 0）。
 4. bump `package.json` 版本（每轮迭代一个版本）。
 
 > `update --ext` 对**已有键**修改需加 `--force`；新增键直接用。键不可删除（append-only）。
@@ -97,7 +98,9 @@ D update fixNNN --status review && D update fixNNN --status approved
 | `extensions.area` | `src/…` 或模块名 | 所属模块 |
 | `extensions.fixed_in` | `vX.Y.Z` | 已修复版本（FIX 必有；被修复的 ISSUE/OPTIM 也回填） |
 | `extensions.files` | `src/a.js,src/b.js` | 可选，修复涉及文件 |
-| `extensions.issues` | `ISSUE-001,OPTIM-002` | FIX 覆盖的编号 |
+| `extensions.issues` | `ISSUE-001,OPTIM-002` 或 `none` | FIX 覆盖的编号；`none` 仅限考古确认无登记的历史维护性修复（OPTIM-020 裁决） |
+
+语义备注：**确认类 OPTIM**（已确认非问题/裁决记录）置 `approved` 时无 `fixed_in` 合法（lint 不强制，见 schema 的 optim 规则注释）；新修复仍须先登记 ISSUE/OPTIM 再挂 FIX。
 
 标签：`P0..P4`、模块/能力（`cli`/`json`/`query`/`history`/`export`/`errmsg`/`io`/`integrity`/`write-path`/`ux`…）、结论（`fix`/`confirmed`）。
 
@@ -107,7 +110,7 @@ D update fixNNN --status review && D update fixNNN --status approved
 2. **验证参数** — 构造覆盖该命令**所有参数与边界**的 scratch 包（系统临时目录，**勿入库**），逐条执行，记录退出码 + stdout + stderr。
 3. **登记** — 缺陷 → ISSUE，改进点 → OPTIM（含暂缓）。
 4. **修复** — 改代码 + 补 `test/<面>-edges.test.js`；`npm test` 全绿。
-5. **收尾** — 登记 FIX、回填 `fixed_in`、置 `approved`、`D verify`、bump 版本。
+5. **收尾** — 登记 FIX、回填 `fixed_in`、置 `approved`、`D verify`、`D lint`、bump 版本。
 
 ## 参数边界检查清单（回归易漏项）
 
@@ -120,11 +123,13 @@ D update fixNNN --status review && D update fixNNN --status approved
 - **错误消息**：歧义/缺失要给出候选或行动指引，而非仅数量或裸栈。
 - **压缩/边界数据**：pack 后历史快照丢失、删除节点、空包、坏行等，都要各测一遍。
 - **契约形状**：`--json` 字段名/形状变化视为破坏性，需登记 OPTIM 后推进。
+- **模版/lint 命令面**：schema 三态（未绑→`TEMPLATE_MISSING` exit 1，`--schema` 可临时指定；文件丢/JSON 坏→快速失败；同 version 不同 sha256→`SCHEMA_DRIFT` exit 1，版本不同→`schema.drift` warn）；`template new` 产物必须过自身 check；`bind` 前先自检（无效 schema 拒写、包零写入）；`init --template` 时 `--id` 撞容器 id 报 `USAGE` 且不落盘；`lint` 有 error 才 exit 1、仅 warn（编号空洞）exit 0；`regex.runtime` 为防御性兑底违规（正常 schema 不触发）。
 
 ## 自检
 
 ```bash
 D verify        # 9 项完整性校验，必须 ok:true
+D lint          # 模版符合性：error 级违规必须为 0（warn 级编号空洞需逐条确认历史）
 node bin/dtp.js tree --packet "$PKT"   # 人工复核骨架与登记分布
 D query --tag P2 --status approved --packet "$PKT"   # 抽查状态
 ```

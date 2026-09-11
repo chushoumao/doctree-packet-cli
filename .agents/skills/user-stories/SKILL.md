@@ -15,8 +15,9 @@ description: 用 dtp 用户故事包驱动「讨论用户故事 → 拆分需求
 
 ## 任务包与骨架
 
-- 真实包：`docs/user-stories.dtp`（**默认继续在此包登记**）。
-- 可复用骨架：`docs/templates/user-stories.template.dtp`；格式说明：`docs/templates/README.md`。
+- 真实包：`docs/user-stories.dtp`（**默认继续在此包登记**，已绑定模版 `docs/templates/user-stories.schema.json`）。
+- 模版单一事实源：`docs/templates/user-stories.schema.json`（声明式 schema，story/task 规则与验收口径机器化）；新建故事包：`dtp init <包名> --template docs/templates/user-stories.schema.json`。
+- 旧骨架 `user-stories.template.dtp` **已退役**（历史样例，勿再拷贝使用）；格式说明：`docs/templates/README.md`。
 - 固定结构：故事池 `f_stories`（folder）；**任务挂载为所属故事的直接子节点**。
 
 ```
@@ -59,7 +60,7 @@ U add usNNN --id taskNNN --title "TASK-NNN <做什么>" --type requirement \
   --tags "task,<module>" --ext story=US-NNN --ext priority=P2 \
   --ext acceptance='["GIVEN <前置> WHEN <操作> THEN <可观察结果>","<下一条验收标准>"]' \
   --description "<一句话说明>" \
-  --content $'【实现说明】<怎么做：涉及文件/接口/命令>\n【验收标准】<与 acceptance 数组逐条一致>\n【验收记录】（完成后回填）逐条复核结果与证据'
+  --content $'【实现说明】<怎么做：涉及文件/接口/命令>\n【验收标准】<与 acceptance 数组逐条一致>\n【验收记录】（验收通过后回填一行结论；明细统一记 ext.done_evidence 单一事实源，此处勿复制防漂移）'
 ```
 
 - **`ext.acceptance` 必填且必须是 JSON 数组**（shell 单引号包裹防展开）；没有验收标准的任务不许进入实现。
@@ -137,6 +138,7 @@ U get taskNNN                                          # 查看验收标准与�
 
 ```bash
 U verify                                             # 9 项完整性校验，必须 ok:true
+U lint                                               # 模版符合性：error 级违规为 0（story/task 约定机器化校验）
 node bin/dtp.js tree --packet "$PKT"                 # 人工复核骨架与故事分布
 U query --tag task --status review --packet "$PKT"   # 待验收任务面
 ```
