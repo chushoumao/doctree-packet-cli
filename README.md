@@ -69,7 +69,7 @@ dtp recover --from 1
 
 | 命令 | 说明 |
 |------|------|
-| `dtp init <name>` | 创建新数据包（生成根节点）。`--id` 自定义根 ID，`--version` 包版本，`--meta k=v` 包元数据，`--force` 覆盖 |
+| `dtp init <name>` | 创建新数据包（生成根节点）。`--id` 自定义根 ID，`--version` 包版本，`--meta k=v` 包元数据，`--template <path>` 按模版 schema 派生骨架包，`--force` 覆盖 |
 | `dtp add <parent>` | 添加子节点。`--title`（必填）`--type` `--description` `--content` `--tags` `--status` `--ext k=v` `--id` |
 | `dtp update <node>` | 更新字段，自动递增版本并记录 changelog。`--title` `--description` `--content` `--status` `--tags`（整体替换）`--ext`；`--force` 允许覆盖已有扩展键 |
 | `dtp rm <node>` | 删除节点及全部子孙（级联）。交互环境询问确认，脚本中需 `--yes` |
@@ -86,8 +86,16 @@ dtp recover --from 1
 | `dtp unpack <file>` | 解包为可用数据包 |
 | `dtp verify` | 校验哈希 / 父子引用 / 索引一致性 / 版本单调性等 9 项 |
 | `dtp recover` | 列出或恢复备份（`--from n`） |
+| `dtp template new\|check\|bind` | 模版管理：`new` 生成 schema 骨架、`check` 自检（正则可编译 / 引用存在 / 无环）、`bind` 绑定到包（先自检，无效 schema 拒写） |
+| `dtp lint` | 按绑定的模版 schema 校验包符合性（骨架 / 字段 / 引用 / 编号，只读）。零参数按包内绑定发现，`--schema <path>` 临时指定 |
 
 **全局选项**（可放在任意位置）：`--packet <path>`（默认 `./packet.dtp`）、`--json`、`--pretty`、`--quiet`、`--user <name>`（默认取环境变量 `DTP_USER`）、`--help`、`--version`。
+
+### 数据包模版（schema）
+
+数据包格式约定的**单一事实源**是声明式 schema。工作流：`dtp template new` 生成骨架 → 编辑成自己的约定 → `dtp template check` 自检 → `dtp init --template` 派生建包（或 `dtp template bind` 绑定已有包）→ `dtp lint` 符合性校验。DSL 与 lint 规则完整说明见 **[docs/templates/README.md](docs/templates/README.md)**（权威文档，此处不展开）。
+
+用 dtp 管理需求与回归登记的协作流程（需求侧 / 实现侧 / 回归侧三会话，故事与任务闭环）见 **[docs/playbook-story-collab.md](docs/playbook-story-collab.md)**。
 
 ### 节点引用规则
 
@@ -144,7 +152,7 @@ dtp get 不存在的节点 --json
 # {"ok":false,"error":{"code":"NOT_FOUND","message":"节点不存在：不存在的节点"}}
 ```
 
-常用错误码：`USAGE`（用法错误，退出码 2）、`NO_PACKET`、`NOT_FOUND`、`AMBIGUOUS_ID`、`NODE_DELETED`、`ID_EXISTS`、`EXT_IMMUTABLE`、`MOVE_CYCLE`、`VERSION_NOT_FOUND`、`LOCKED`、`STRUCTURE`、`CORRUPT_LINE`、`EXISTS`（退出码 2）、`INTERNAL`。
+常用错误码：`USAGE`（用法错误，退出码 2）、`NO_PACKET`、`NOT_FOUND`、`AMBIGUOUS_ID`、`NODE_DELETED`、`ID_EXISTS`、`EXT_IMMUTABLE`、`MOVE_CYCLE`、`VERSION_NOT_FOUND`、`LOCKED`、`STRUCTURE`、`CORRUPT_LINE`、`EXISTS`（退出码 2）、`INVALID_TYPE`、`INVALID_STATUS`（退出码 2）、`SCHEMA_INVALID`、`SCHEMA_DRIFT`、`TEMPLATE_MISSING`、`INTERNAL`。
 
 退出码：`0` 成功；`2` 用法/文件已存在；`1` 其他错误；`verify` 发现问题时退出码为 `1` 且正常输出报告。
 
@@ -166,7 +174,7 @@ dtp/
 │   ├── query.js          # 组合过滤引擎
 │   ├── export.js         # Markdown / HTML 导出
 │   ├── output.js         # 输出通道（--json/--quiet/--pretty）、终端表格与颜色
-│   └── commands/         # 17 个子命令（每命令一文件）
+│   └── commands/         # 19 个子命令（每命令一文件）
 └── test/                 # node:test 单元 + CLI 端到端 + 性能
 ```
 
@@ -178,7 +186,7 @@ dtp/
 - **实现差异**（相对需求文档 Rust 稿）：枚举序列化为小写字符串；`*deleted` 变更的 `new_hash` 为 `null`（文档中为非空 `String`）；changelog 增加 `version` 关联字段；`node_delete` 墓碑行类型为文档未明确的删除语义给出落地方式。
 
 ```bash
-npm test        # 63 个用例：单元 / 端到端 / 性能（10k 节点加载 <500ms、组合过滤 <100ms）
+npm test        # 136 个用例：单元 / 端到端 / 性能（10k 节点加载 <500ms、组合过滤 <100ms）
 ```
 
 ## 性能实测（Node 22，参考值）

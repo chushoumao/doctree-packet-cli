@@ -38,6 +38,7 @@ dtp（DocTree Packet CLI）是一个**零依赖** Node.js 命令行工具，用 
 - 新增 / 改名 / 删除命令、参数、选项或写路径行为时，更新技能中的命令示例与「参数边界检查清单」。
 - 变更 `--json` 契约、错误码、退出码、`extensions`/tags 约定时，更新技能与 `docs/templates/README.md` 的对应约定。
 - 调整登记格式模板（ISSUE/OPTIM/FIX 体例）后，同步 `docs/templates/`。
+- 根 `README.md` 的「快速上手 / 命令一览 / 架构树子命令计数 / 错误码列表 / 特性段落」同属核对范围：新增命令、参数选项或能力面时一并同步（US-002 曾漏根 README，见 ISSUE-025 / FIX-016）。
 - 收尾 checklist 未完成「核对技能新鲜度」视为本轮未收尾。
 
 ## 回归任务包
