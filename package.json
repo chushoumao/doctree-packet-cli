@@ -19,7 +19,7 @@
     "node": ">=18.17"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test --test-concurrency=1",
     "dtp": "node bin/dtp.js"
   },
   "keywords": [
