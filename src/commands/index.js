@@ -17,6 +17,7 @@ import { command as verify } from './verify.js'
 import { command as recover } from './recover.js'
 import { command as template } from './template.js'
 import { command as lint } from './lint.js'
+import { command as web } from './web.js'
 
 // 命令注册表：键即子命令名
 export const registry = {
@@ -39,4 +40,5 @@ export const registry = {
   [recover.name]: recover,
   [template.name]: template,
   [lint.name]: lint,
+  [web.name]: web,
 }

@@ -6,6 +6,7 @@ import { asDtpError, DtpError } from './errors.js'
 import { withLock } from './storage.js'
 import { Packet } from './packet.js'
 import { registry } from './commands/index.js'
+import { resolveDefaultPacket, packetMissingError } from './config.js'
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
 
@@ -50,17 +51,25 @@ export async function main(argv) {
 }
 
 function makeContext(parsed, out) {
-  const packetPath = parsed.globals.packet
-  return {
+  // --packet 解析链（US-003）：显式 > .dtp/config.json default > ./packet.dtp。
+  // 显式 = 零副作用（不建 .dtp/ 不写 config）；缺省解析的静态错误（CONFIG_INVALID）
+  // 即时抛，default 指向的文件缺失留到 ctx.load() 按需 fail loud（不阻断 init）
+  const explicit = parsed.globals.packet !== undefined
+  const resolved = explicit ? null : resolveDefaultPacket()
+  if (resolved?.error) throw resolved.error
+  const packetPath = explicit ? parsed.globals.packet : resolved.path
+  const ctx = {
     args: parsed.args,
     opts: parsed.opts,
     globals: parsed.globals,
     out,
     user: parsed.globals.user,
     packetPath,
+    explicitPacket: explicit,
+    packetSource: explicit ? 'explicit' : resolved.source,
     load() {
       if (!fs.existsSync(packetPath)) {
-        throw new DtpError('NO_PACKET', `数据包不存在：${packetPath}（先用 dtp init 创建）`)
+        throw packetMissingError(explicit ? { source: 'legacy' } : resolved, packetPath)
       }
       const packet = Packet.load(packetPath)
       // 篡改巡检结果缓存：写命令据此在 JSON 输出附 warnings（不阻断写入）
@@ -74,4 +83,5 @@ function makeContext(parsed, out) {
       return withLock(packetPath, fn)
     },
   }
+  return ctx
 }

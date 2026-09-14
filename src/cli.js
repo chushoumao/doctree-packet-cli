@@ -4,7 +4,7 @@ import { DtpError } from './errors.js'
 // 支持 --name value / --name=value / 短选项 -y；multi 选项可重复传入。
 
 export const GLOBAL_OPTIONS = {
-  packet: { arg: 'path', desc: '数据包文件路径（默认 ./packet.dtp）' },
+  packet: { arg: 'path', desc: '数据包文件路径（缺省时按 .dtp/config.json 默认 → ./packet.dtp 解析）' },
   json: { desc: '以结构化 JSON 输出（供脚本/Agent 消费）' },
   pretty: { desc: '格式化 JSON 输出' },
   quiet: { desc: '静默模式：成功时不产生输出' },
@@ -15,7 +15,8 @@ export const GLOBAL_OPTIONS = {
 
 function defaults() {
   return {
-    packet: './packet.dtp',
+    // packet 不设默认：显式与否由 makeContext 解析（显式 > .dtp/config.json > ./packet.dtp）
+    packet: undefined,
     json: false,
     pretty: false,
     quiet: false,

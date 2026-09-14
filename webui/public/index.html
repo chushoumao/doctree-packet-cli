@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>dtp · DocTree Packet 控制台</title>
+  <script>
+    // 首帧前应用主题（localStorage 记忆，未设置时跟随系统），避免暗色偏好闪白
+    document.documentElement.dataset.theme =
+      localStorage.getItem('dtp.theme') ||
+      (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+  </script>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;700;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- 背景光池（液态玻璃的环境光） -->
+  <div class="pool" aria-hidden="true">
+    <div class="pool__blob pool__blob--a"></div>
+    <div class="pool__blob pool__blob--b"></div>
+    <div class="pool__blob pool__blob--c"></div>
+    <div class="pool__blob pool__blob--d"></div>
+    <div class="pool__grain"></div>
+  </div>
+
+  <div class="app">
+    <!-- 顶栏 -->
+    <header class="topbar glass glass--lit" data-enter="0">
+      <div class="brand">
+        <svg class="brand__mark" viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M16 3C16 3 6 14.5 6 21a10 10 0 0 0 20 0C26 14.5 16 3 16 3Z" />
+          <path class="brand__shine" d="M11.5 20.5a4.8 4.8 0 0 0 3.2 4.4" />
+        </svg>
+        <div class="brand__text">
+          <span class="brand__name">dtp</span>
+          <span class="brand__sub">DocTree Packet · 液态玻璃控制台</span>
+        </div>
+      </div>
+
+      <div class="topbar__packet pkmenu">
+        <button class="pkbtn" id="pkBtn" data-action="packet-menu" aria-haspopup="true" aria-label="切换数据包">
+          <svg class="pkbtn__glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.8 4.5c0-.6.4-1 1-1h3.2l1.4 1.7h5.8c.6 0 1 .4 1 1v6.3c0 .6-.4 1-1 1H2.8c-.6 0-1-.4-1-1Z"/></svg>
+          <span class="pkbtn__text">
+            <span class="pkbtn__name serif" id="pkName">…</span>
+            <span class="pkbtn__meta" id="pkMeta"></span>
+          </span>
+          <svg class="pkbtn__chev" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4"/></svg>
+        </button>
+        <button class="btn btn--icon" data-action="new-packet" title="新建数据包" aria-label="新建数据包">
+          <svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>
+        </button>
+        <div class="menu__pop glass pkpop" id="pkPop" hidden>
+          <div class="pkpop__head">
+            <span class="pkpop__title">数据包 · <span id="pkCount"></span></span>
+            <span class="pkpop__ops">
+              <button class="btn btn--ghost btn--icon" data-action="refresh" title="刷新列表与当前树" aria-label="刷新">
+                <svg viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.8 1.8v3h-3"/></svg>
+              </button>
+              <button class="btn btn--ghost btn--icon" data-action="new-packet" title="新建数据包" aria-label="新建数据包">
+                <svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>
+              </button>
+            </span>
+          </div>
+          <div class="pkpop__list" id="pkList"></div>
+          <div class="pkpop__foot">
+            <span class="mono" id="pkWs" title="工作区路径（.dtp 文件放这里即可被识别）"></span>
+          </div>
+        </div>
+      </div>
+
+      <nav class="tabs" role="tablist">
+        <button class="tab is-active" role="tab" data-action="view" data-view="browse">浏览</button>
+        <button class="tab" role="tab" data-action="view" data-view="query">查询</button>
+        <button class="tab" role="tab" data-action="view" data-view="stats">统计</button>
+        <button class="tab" role="tab" data-action="view" data-view="template">模板</button>
+        <button class="tab" role="tab" data-action="view" data-view="ledger">台账</button>
+      </nav>
+
+      <div class="topbar__ops">
+        <button class="btn btn--icon" data-action="toggle-theme" title="亮暗模式切换" aria-label="切换亮暗模式">
+          <svg class="theme-ico-moon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.6 9.6A6.2 6.2 0 0 1 6.4 2.4a6.2 6.2 0 1 0 7.2 7.2Z"/></svg>
+          <svg class="theme-ico-sun" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3.1"/><path d="M8 1.2v1.9M8 12.9v1.9M1.2 8h1.9M12.9 8h1.9M3.3 3.3l1.3 1.3m6.8 6.8 1.3 1.3m0-9.6-1.3 1.3m-6.8 6.8-1.3 1.3"/></svg>
+        </button>
+        <button class="btn btn--icon" data-action="refresh" title="刷新（树 + 详情 + 数据包列表）" aria-label="刷新">
+          <svg viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.8 1.8v3h-3"/></svg>
+        </button>
+        <label class="userbox" title="变更将以此署名写入 changelog">
+          <svg viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="3"/><path d="M2.5 14a5.5 5.5 0 0 1 11 0"/></svg>
+          <input id="userInput" class="userbox__input" placeholder="署名" spellcheck="false">
+        </label>
+        <button class="btn" data-action="verify" title="校验数据包完整性（9 项检查）">
+          <svg viewBox="0 0 16 16"><path d="M8 1.8 13 3.6v4.2c0 3.1-2.1 5.3-5 6.4-2.9-1.1-5-3.3-5-6.4V3.6Z"/><path d="m5.8 7.8 1.6 1.6 3-3.2"/></svg>
+          <span>校验</span>
+        </button>
+        <div class="menu">
+          <button class="btn" data-action="export-menu" title="导出 Markdown / HTML">
+            <svg viewBox="0 0 16 16"><path d="M8 2v8m0 0 3-3M8 10 5 7"/><path d="M2.5 12.5h11"/></svg>
+            <span>导出</span>
+          </button>
+          <div class="menu__pop glass" id="exportMenu" hidden>
+            <button data-action="export-doc" data-format="md">当前节点 · Markdown</button>
+            <button data-action="export-doc" data-format="html">当前节点 · HTML</button>
+            <div class="menu__sep"></div>
+            <button data-action="export-doc" data-format="md" data-scope="packet">整包 · Markdown</button>
+            <button data-action="export-doc" data-format="html" data-scope="packet">整包 · HTML</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- 主体三栏 -->
+    <div class="stage">
+      <aside class="sidebar glass glass--lit" data-enter="1" id="sidebar">
+        <div class="sidebar__head">
+          <div class="field field--search">
+            <svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>
+            <input id="treeFilter" class="field__input" placeholder="过滤树（标题 / 路径），按 / 聚焦" spellcheck="false">
+            <button class="field__clear" id="filterClear" data-action="clear-filter" hidden title="清除过滤" aria-label="清除过滤">
+              <svg viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6"/></svg>
+            </button>
+          </div>
+          <button class="btn btn--icon btn--ghost sidebar__fold" id="sideFold" data-action="toggle-sidebar" aria-expanded="true" aria-controls="tree" title="折叠侧栏">
+            <svg viewBox="0 0 16 16"><path d="M10 3.5 5.5 8 10 12.5"/></svg>
+          </button>
+        </div>
+        <div class="tree" id="tree" role="tree"></div>
+        <div class="sidebar__foot" id="sidebarFoot"></div>
+      </aside>
+
+      <main class="main" id="main" data-enter="2"></main>
+
+      <aside class="rail glass glass--lit" data-enter="3" id="rail">
+        <div class="rail__head">
+          <svg viewBox="0 0 16 16"><path d="M8 3a5 5 0 1 0 4.5 2.8"/><path d="M8 1.5V5l2.5-1.8Z"/></svg>
+          <span>版本水流</span>
+        </div>
+        <div class="rail__body" id="railBody"></div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- 滑出面板（移动 / 校验报告 / 新建包） -->
+  <div class="scrim" id="scrim" hidden></div>
+  <section class="slideover glass glass--lit" id="slideover" hidden aria-modal="true"></section>
+
+  <!-- toast 容器 -->
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

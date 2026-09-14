@@ -1,6 +1,6 @@
 {
   "name": "doctree-packet-cli",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "dtp — DocTree Packet CLI：树形结构化、Append-Only 版本化、JSONL 存储的文档数据包管理工具",
   "type": "module",
   "bin": {
@@ -20,7 +20,9 @@
   },
   "scripts": {
     "test": "node --test --test-concurrency=1",
-    "dtp": "node bin/dtp.js"
+    "dtp": "node bin/dtp.js",
+    "prepublishOnly": "npm test",
+    "prepack": "npm test"
   },
   "keywords": [
     "doctree",
@@ -30,5 +32,17 @@
     "append-only",
     "versioning"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "files": [
+    "bin",
+    "src",
+    "docs/templates",
+    "docs/playbook-story-collab.md",
+    "webui",
+    "!webui/gui-test-screenshots",
+    "!webui/workspace",
+    "!webui/*.mjs",
+    "!docs/templates/*.template.dtp",
+    "!**/*.bak.*"
+  ]
 }
