@@ -27,15 +27,26 @@ export const command = {
   example: ['dtp web --open', 'dtp web --port 4762 --dir ./docs'],
   async run(ctx) {
     const { path: workspace, source } = resolveWebWorkspace(process.cwd(), ctx.opts.dir)
-    const port = ctx.opts.port !== undefined ? Number(ctx.opts.port) : undefined
-    if (port !== undefined && (!Number.isInteger(port) || port <= 0 || port > 65535)) {
-      throw new DtpError('USAGE', `--port 需要是 1-65535 的整数（收到 "${ctx.opts.port}"）`)
+    // 严格十进制整数（ISSUE-026）：Number() 会把 0x10 / 1e2 / " 1 " 静默解释成别的端口
+    let port
+    if (ctx.opts.port !== undefined) {
+      const raw = String(ctx.opts.port)
+      const n = /^\d+$/.test(raw) ? Number(raw) : NaN
+      if (!Number.isInteger(n) || n < 1 || n > 65535) {
+        throw new DtpError('USAGE', `--port 需要是 1-65535 的整数（收到 "${ctx.opts.port}"）`)
+      }
+      port = n
+    }
+    // 空 host 会被 Node 解释为全网卡（TCP *:port），与「默认仅本机」相悖（ISSUE-028）
+    const host = ctx.opts.host !== undefined ? String(ctx.opts.host).trim() : undefined
+    if (ctx.opts.host !== undefined && !host) {
+      throw new DtpError('USAGE', '--host 不能为空（默认 127.0.0.1 仅本机访问；对外监听请用 --host 0.0.0.0）')
     }
     // 动态 import：CLI 其它命令不为 webui 付加载成本
     const { start } = await import('../../webui/server.js')
     let info
     try {
-      info = await start({ host: ctx.opts.host, port, workspace })
+      info = await start({ host, port, workspace })
     } catch (e) {
       throw new DtpError('USAGE', e.message)
     }

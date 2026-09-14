@@ -16,6 +16,10 @@ const BUILTIN_TEMPLATES = new Map([
   ['dtp-regression', 'docs/templates/dtp-regression.schema.json'],
 ])
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+// 写路径上需要转成可行动错误的 fs 错误码（ISSUE-030）；其余异常保持原样上抛，不遮蔽真 INTERNAL
+const FS_ERROR_CODES = new Set([
+  'ENOENT', 'EEXIST', 'EACCES', 'EPERM', 'ENOTDIR', 'EISDIR', 'ENAMETOOLONG', 'EROFS', 'ENOSPC', 'EMFILE', 'ENFILE',
+])
 
 export const command = {
   name: 'init',
@@ -45,6 +49,11 @@ export const command = {
     const SAFE_NAME_RE = /^[-\w\u4e00-\u9fff][\w\u4e00-\u9fff.\- ]*$/
     if (!explicit && !SAFE_NAME_RE.test(name0)) {
       throw new DtpError('USAGE', `包名 "${ctx.args.name}" 不能用作 .dtp/ 文件名（安全字符集：字母数字/中文/._- 与空格；或用 --packet 自定路径）`)
+    }
+    // 长度上限（ISSUE-030）：.dtp/.lock/.bak.N 后缀叠加后仍须低于常见 NAME_MAX(255)
+    const nameBytes = Buffer.byteLength(name0, 'utf8')
+    if (!explicit && nameBytes > 200) {
+      throw new DtpError('USAGE', `包名过长（${nameBytes} 字节，上限 200）：生成的 .dtp/ 文件名会超出文件系统上限；请缩短，或用 --packet 自定路径`)
     }
     const name = validateTitle(ctx.args.name)
     const file = explicit ? ctx.packetPath : `.dtp/${name0}.dtp`
@@ -87,8 +96,13 @@ export const command = {
           }
           released = false
         } else {
-          fs.mkdirSync(path.dirname(releasedPath), { recursive: true })
-          fs.copyFileSync(schemaFile, releasedPath)
+          try {
+            fs.mkdirSync(path.dirname(releasedPath), { recursive: true })
+            fs.copyFileSync(schemaFile, releasedPath)
+          } catch (e) {
+            // templates 是文件 / 只读等：给可行动指引，不冒泡成 INTERNAL 裸错（ISSUE-030）
+            throw new DtpError('USAGE', `无法释放内置模版到 ${releasedPath}：${e.code ?? e.message}（检查该路径是否为可写目录，或改用 --template <路径> 指定 schema）`)
+          }
           released = true
         }
         schemaFile = releasedPath
@@ -108,30 +122,38 @@ export const command = {
       }
     }
 
-    const { lines, meta, root } = withLock(file, () => {
-      const metadata = { ...parseExtAssignments(ctx.opts.meta) }
-      if (templateMeta) metadata.template = { ...templateMeta } // 自动绑定优先于同名 --meta
-      const r = schema
-        ? skeletonLines(schema, {
-            name,
-            packetId: 'pkt-' + randomUUID(),
-            version: ctx.opts.version,
-            rootId: ctx.opts.id ?? randomUUID(),
-            metadata,
-            user: ctx.user,
-          })
-        : initPacketLines({
-            name,
-            packetId: 'pkt-' + randomUUID(),
-            version: ctx.opts.version,
-            rootId: ctx.opts.id ?? randomUUID(),
-            metadata,
-            user: ctx.user,
-          })
-      if (exists) backupPacketFile(file)
-      writeJsonlFresh(file, r.lines)
-      return r
-    })
+    let created
+    try {
+      created = withLock(file, () => {
+        const metadata = { ...parseExtAssignments(ctx.opts.meta) }
+        if (templateMeta) metadata.template = { ...templateMeta } // 自动绑定优先于同名 --meta
+        const r = schema
+          ? skeletonLines(schema, {
+              name,
+              packetId: 'pkt-' + randomUUID(),
+              version: ctx.opts.version,
+              rootId: ctx.opts.id ?? randomUUID(),
+              metadata,
+              user: ctx.user,
+            })
+          : initPacketLines({
+              name,
+              packetId: 'pkt-' + randomUUID(),
+              version: ctx.opts.version,
+              rootId: ctx.opts.id ?? randomUUID(),
+              metadata,
+              user: ctx.user,
+            })
+        if (exists) backupPacketFile(file)
+        writeJsonlFresh(file, r.lines)
+        return r
+      })
+    } catch (e) {
+      // 仅包裱已知 fs 错误（ISSUE-030，如 .lock 路径过长）；DtpError（如 LOCKED）与内部 bug 原样上抛
+      if (e instanceof DtpError || !FS_ERROR_CODES.has(e?.code)) throw e
+      throw new DtpError('USAGE', `无法写入数据包 ${file}：${e.code}（检查路径长度、目录权限与磁盘空间）`)
+    }
+    const { meta, root } = created
     // 首建设 config.default（二建不改；config 损坏时不覆盖，仅提示）
     let configInfo = null
     if (!explicit) {

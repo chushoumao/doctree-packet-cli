@@ -23,7 +23,17 @@ export function readConfig(cwd = process.cwd()) {
     raw = fs.readFileSync(file, 'utf8')
   } catch (e) {
     if (e.code === 'ENOENT') return null
-    throw e
+    // .dtp 是文件 / config.json 是目录 / 无读权限：归为 CONFIG_INVALID 并给行动指引，
+    // 不冒泡成 INTERNAL 裸栈（ISSUE-029）
+    const why =
+      e.code === 'ENOTDIR' ? '.dtp 不是目录'
+      : e.code === 'EISDIR' ? '.dtp/config.json 是目录'
+      : e.code === 'EACCES' ? '无读取权限'
+      : (e.code ?? e.message)
+    throw new DtpError(
+      'CONFIG_INVALID',
+      `无法读取 .dtp/config.json（${why}）：${file}（修复或删除该文件/目录后重试，或用 --packet 显式指定数据包）`
+    )
   }
   let obj
   try {
@@ -93,7 +103,17 @@ export function resolveDefaultPacket(cwd = process.cwd()) {
 // web 工作区解析（dtp web 与 server.js 直跑共用）：--dir > DTP_WORKSPACE > .dtp/config.json 存在→.dtp/ > 报错指引 init
 // （四态链与 TASK-009 的包解析链同源：config 只判存在性即定向 .dtp/，不读 default 内容）
 export function resolveWebWorkspace(cwd = process.cwd(), explicitDir) {
-  if (explicitDir) return { path: path.resolve(cwd, explicitDir), source: 'dir' }
+  // 显式 --dir 与「未提供」严格区分（OPTIM-021）：空串不得静默回落解析链
+  if (explicitDir !== undefined) {
+    const dir = String(explicitDir).trim()
+    if (!dir) throw new DtpError('USAGE', '--dir 需要是非空目录路径（省略则按 DTP_WORKSPACE > .dtp/ 解析）')
+    const abs = path.resolve(cwd, dir)
+    // 已存在但不是目录：启动即拒，否则 server 报 ok:true、随后每个 API 都在 mkdir 上抛原始 EEXIST（ISSUE-027）
+    if (fs.existsSync(abs) && !fs.statSync(abs).isDirectory()) {
+      throw new DtpError('USAGE', `--dir 需要是目录：${abs}（当前是文件）`)
+    }
+    return { path: abs, source: 'dir' }
+  }
   const env = process.env.DTP_WORKSPACE?.trim()
   if (env) return { path: path.resolve(env), source: 'env' }
   // config 存在（合法）→ 工作区即 .dtp/；损坏则 fail loud（与包解析链一致）
