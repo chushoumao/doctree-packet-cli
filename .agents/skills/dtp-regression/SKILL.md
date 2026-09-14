@@ -17,7 +17,7 @@ description: 用 dtp 回归任务包驱动 dogfooding 式迭代：统一登记�
 ## 任务包与骨架
 
 - 真实包：`docs/dtp-regression.dtp`（**默认继续在此包登记**，已绑定模版 `docs/templates/dtp-regression.schema.json`）。
-- 模版单一事实源：`docs/templates/dtp-regression.schema.json`（声明式 schema）；新建回归包：`dtp init <包名> --template docs/templates/dtp-regression.schema.json`。
+- 模版单一事实源：`docs/templates/dtp-regression.schema.json`（声明式 schema）；新建回归包：`dtp init <包名> --template dtp-regression`（内置保留字，释放 schema 到 `.dtp/templates/`）。
 - 旧骨架 `dtp-regression.template.dtp` **已退役**（历史样例，勿再拷贝使用）。
 - 固定三个收集夹：`f_issues`（问题登记 · folder）/ `f_optim`（优化建议 · folder）/ `f_fixlog`（修复登记 · index）。
 

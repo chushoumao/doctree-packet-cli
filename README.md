@@ -24,9 +24,23 @@ npm link          # 之后可直接 dtp <命令>
 
 ## 快速上手
 
+### 安装
+
 ```bash
-# 初始化项目
-dtp init "智能客服系统" --packet ./客服系统.dtp
+# 从本地 tarball 安装（当前推荐；发布后可直接 npm i -g doctree-packet-cli）
+npm i -g doctree-packet-cli-<版本>.tgz
+
+# 发布后的免安装用法（标注：npm 发布后生效，当前不可用）
+# npx doctree-packet-cli init "智能客服系统"
+```
+
+安装后即得 `dtp` 命令；`--template user-stories|dtp-regression` 可释放内置模版，`dtp web` 打开可视化控制台。
+
+### 上手
+
+```bash
+# 初始化项目（缺省落点 .dtp/，自动设为项目默认包）
+dtp init "智能客服系统"
 
 # 添加需求模块
 dtp add n_root --id fr001 --title "FR-001 用户认证" --type requirement --tags auth,P0
@@ -61,7 +75,12 @@ dtp unpack ./v1.0.0.dtp.gz --packet ./restored.dtp
 # 完整性校验 / 从备份恢复
 dtp verify
 dtp recover --from 1
+
+# 可视化控制台（缺省工作区 .dtp/，自动开浏览器可加 --open）
+dtp web
 ```
+
+> 约定：省略 `--packet` 时按 `.dtp/config.json` 默认 → `./packet.dtp` 解析；`dtp init` 缺省落点 `.dtp/<名>.dtp`（首建自动设默认）。
 
 ---
 
@@ -69,7 +88,7 @@ dtp recover --from 1
 
 | 命令 | 说明 |
 |------|------|
-| `dtp init <name>` | 创建新数据包（生成根节点）。`--id` 自定义根 ID，`--version` 包版本，`--meta k=v` 包元数据，`--template <path>` 按模版 schema 派生骨架包，`--force` 覆盖 |
+| `dtp init <name>` | 创建新数据包（生成根节点）。`--id` 自定义根 ID，`--version` 包版本，`--meta k=v` 包元数据，`--template <tpl>` 按模版派生骨架包：`user-stories`/`dtp-regression` 释放内置模版到包旁 `templates/`（保留字优先于本地同名文件），或 `<schema 路径>`，`--force` 覆盖 |
 | `dtp add <parent>` | 添加子节点。`--title`（必填）`--type` `--description` `--content` `--tags` `--status` `--ext k=v` `--id` |
 | `dtp update <node>` | 更新字段，自动递增版本并记录 changelog。`--title` `--description` `--content` `--status` `--tags`（整体替换）`--ext`；`--force` 允许覆盖已有扩展键 |
 | `dtp rm <node>` | 删除节点及全部子孙（级联）。交互环境询问确认，脚本中需 `--yes` |
@@ -86,6 +105,7 @@ dtp recover --from 1
 | `dtp unpack <file>` | 解包为可用数据包 |
 | `dtp verify` | 校验哈希 / 父子引用 / 索引一致性 / 版本单调性等 9 项 |
 | `dtp recover` | 列出或恢复备份（`--from n`） |
+| `dtp web` | 启动可视化控制台（webui）：树浏览 / 查询 / 统计 / 校验 / 模版管理 / 编辑，与 CLI 共享引擎与文件锁。`--port` `--host` `--dir` `--open` |
 | `dtp template new\|check\|bind` | 模版管理：`new` 生成 schema 骨架、`check` 自检（正则可编译 / 引用存在 / 无环）、`bind` 绑定到包（先自检，无效 schema 拒写） |
 | `dtp lint` | 按绑定的模版 schema 校验包符合性（骨架 / 字段 / 引用 / 编号，只读）。零参数按包内绑定发现，`--schema <path>` 临时指定 |
 
@@ -174,7 +194,7 @@ dtp/
 │   ├── query.js          # 组合过滤引擎
 │   ├── export.js         # Markdown / HTML 导出
 │   ├── output.js         # 输出通道（--json/--quiet/--pretty）、终端表格与颜色
-│   └── commands/         # 19 个子命令（每命令一文件）
+│   └── commands/         # 20 个子命令（每命令一文件）
 └── test/                 # node:test 单元 + CLI 端到端 + 性能
 ```
 

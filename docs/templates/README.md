@@ -2,10 +2,12 @@
 
 数据包格式约定的**单一事实源**是声明式 schema（DSL v1）：
 
-| 工作流 | schema | 已绑定真实包 |
-|--------|--------|--------------|
-| 用户故事 | `user-stories.schema.json` | `docs/user-stories.dtp` |
-| dogfooding 回归 | `dtp-regression.schema.json` | `docs/dtp-regression.dtp` |
+| 工作流 | 内置 schema（`--template` 保留字） |
+|--------|----------------------------------|
+| 用户故事 | `user-stories` |
+| dogfooding 回归 | `dtp-regression` |
+
+两份 schema 均随 npm 包分发：`dtp init <名> --template user-stories` 即释放派生（详见 `dtp init --help`）。
 
 > ⚠️ **已退役**：`user-stories.template.dtp` 与 `dtp-regression.template.dtp` 保留为历史样例，**勿再拷贝使用**——骨架派生已由 `dtp init --template` 接管，且旧样例含示例业务节点，与现行「无示例节点」约定不一致。
 

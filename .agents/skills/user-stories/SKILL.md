@@ -16,7 +16,7 @@ description: 用 dtp 用户故事包驱动「讨论用户故事 → 拆分需求
 ## 任务包与骨架
 
 - 真实包：`docs/user-stories.dtp`（**默认继续在此包登记**，已绑定模版 `docs/templates/user-stories.schema.json`）。
-- 模版单一事实源：`docs/templates/user-stories.schema.json`（声明式 schema，story/task 规则与验收口径机器化）；新建故事包：`dtp init <包名> --template docs/templates/user-stories.schema.json`。
+- 模版单一事实源：`docs/templates/user-stories.schema.json`（声明式 schema，story/task 规则与验收口径机器化）；新建故事包：`dtp init <包名> --template user-stories`（内置保留字，释放 schema 到 `.dtp/templates/`；装了 npm 包后无需仓库路径）。
 - 旧骨架 `user-stories.template.dtp` **已退役**（历史样例，勿再拷贝使用）；格式说明：`docs/templates/README.md`。
 - 固定结构：故事池 `f_stories`（folder）；**任务挂载为所属故事的直接子节点**。
 
