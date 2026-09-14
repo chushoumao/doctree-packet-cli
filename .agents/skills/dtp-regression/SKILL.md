@@ -125,6 +125,7 @@ D update fixNNN --status review && D update fixNNN --status approved
 - **压缩/边界数据**：pack 后历史快照丢失、删除节点、空包、坏行等，都要各测一遍。
 - **契约形状**：`--json` 字段名/形状变化视为破坏性，需登记 OPTIM 后推进。
 - **模版/lint 命令面**：schema 三态（未绑→`TEMPLATE_MISSING` exit 1，`--schema` 可临时指定；文件丢/JSON 坏→快速失败；同 version 不同 sha256→`SCHEMA_DRIFT` exit 1，版本不同→`schema.drift` warn）；`template new` 产物必须过自身 check；`bind` 前先自检（无效 schema 拒写、包零写入）；`init --template` 时 `--id` 撞容器 id 报 `USAGE` 且不落盘；`lint` 有 error 才 exit 1、仅 warn（编号空洞）exit 0；`regex.runtime` 为防御性兑底违规（正常 schema 不触发）。
+- **分发面（v1.7.0）**：`config.json`（仅 `{version:1,default:"<安全文件名>.dtp"}`）解析链 `--packet` 显式 > `config.default` > `./packet.dtp`；损坏/形状非法/version 非 1 → `CONFIG_INVALID` exit 1，`default` 丢失 → `NO_PACKET`；`.dtp` 是文件 / `config.json` 是目录 / 无读权限等 **fs 级失败同样 `CONFIG_INVALID`**（不裸栈）；init 首建设 `default`、二建不改。`dtp web`：`--port` 严格 `^\d+$` 且 1..65535（`0x10`/`1e2`/首尾空白一律 USAGE）；`--host` 空值 USAGE（默认 127.0.0.1，空串曾静默绑全网卡 `TCP *:port`）；`--dir` 显式空值 USAGE、已存在但非目录 USAGE（不存在仍按需创建）；workspace 解析链 `--dir` > `DTP_WORKSPACE` > config 存在→`.dtp/` > `NO_PACKET`。`init` 包名按 UTF-8 字节 ≤200（超长 USAGE）；`--template` 内置保留字（`user-stories`/`dtp-regression`）释放到包旁 `templates/`，同名同内容跳过、异内容 USAGE。
 
 ## 自检
 
