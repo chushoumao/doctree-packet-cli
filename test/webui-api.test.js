@@ -5,11 +5,14 @@ import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 import { tmpdir, runDtp } from './helpers.js'
 
-const BIN = path.resolve(import.meta.dirname, '..', 'bin', 'dtp.js')
-const PORT = 30000 + Math.floor(Math.random() * 10000)
+// Node 18 兼容：import.meta.dirname 是 20.11+ API，用 fileURLToPath 先例
+const BIN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'dtp.js')
+// 端口选 4761 产品段 + 随机偏移：避开 Linux ephemeral 段（32768+）降低 CI 偶发碰撞；套件串行无并发实例
+const PORT = 4761 + 1 + Math.floor(Math.random() * 100)
 const BASE = `http://127.0.0.1:${PORT}`
 const WS = tmpdir('webui-smoke-')
 

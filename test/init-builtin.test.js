@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import { tmpdir, runDtp } from './helpers.js'
 
@@ -95,7 +96,7 @@ test('路径模式（旧用法）：bind 指向给定路径、无 released 字�
   const dir = tmpdir('builtin-path-')
   const schemaFile = path.join(dir, 'my.schema.json')
   fs.copyFileSync(
-    path.resolve(import.meta.dirname, '..', 'docs', 'templates', 'user-stories.schema.json'),
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'docs', 'templates', 'user-stories.schema.json'), // Node 18 兼容（同上）
     schemaFile
   )
   const r = j(['init', '自管包', '--packet', 'p.dtp', '--template', 'my.schema.json'], { cwd: dir })
