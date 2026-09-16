@@ -131,8 +131,10 @@ U get taskNNN                                          # 查看验收标准与�
 ## 参数边界检查清单
 
 - 沿用通用清单（数值严格解析、空值拒绝 fail-open、用法错误 exit 2 / 业务错误 exit 1、错误消息带行动指引）。
+- **段落标题精确匹配**：`content` 的段标题必须是精确标记（`【需求拆分】`/`【验收口径】`），括注与修饰写进段内正文——`【需求拆分（草案）】` 这类变体不会被 lint/enforce 的 content_sections 命中（us005 曾因此报 2 条 error）。
 - `acceptance` 必须 JSON 数组：登记后 `U get taskNNN` 确认类型是数组而非字符串（shell 引号易踩坑）；`--ext` 等号后空值报 `USAGE`（置空用 `k=null`，ISSUE-022）。
 - story 与 task 的 `--parent` 关系必须正确：task 挂 story 下，不许挂 `f_stories` 根下。
+- **写路径强制校验（enforce 包）**：绑定模版的包可 `dtp template bind <schema> --enforce` 开启编辑时校验——登记 `add`/`update` 时违规即拒（`SCHEMA_VIOLATION`，`error.violations` 逐条含 hint，包零写入）；**enforce 态 add 必须一次带全必填字段**（story 的 priority/四段正文、task 的 story/priority/acceptance 数组）；warn 级（编号跳号）不拦、以 `schema_warnings` 透传；逃生路径=先修数据或 `--no-enforce`（无按次跳过参数）；`rm` 不拦引用悬挂（lint 事后可查）。
 
 ## 自检
 

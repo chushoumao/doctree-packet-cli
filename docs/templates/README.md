@@ -54,6 +54,7 @@ dtp lint --packet weekly.dtp --schema ./x.json   # 临时指定 schema
 - `comment` 键：顶层 / skeleton 条目 / 规则处合法，人类可读，求值忽略。
 - 未被任何规则认领的节点 v1 放行（不做 closed 容器）；ext 类型只判 string 存在性与 array 数组性。
 - `ref_exists`：ext 值与存活节点 id 或标题编号段（首个分隔符前 token）**全等**，不做模糊匹配。
+- `content_sections`：段落标题**精确匹配**（`content.includes('【需求拆分】')`）——括注/修饰须写进段内正文；变体标题（`【需求拆分（草案）】`）不命中，这是刻意设计（段标题即契约本体，前缀匹配会放过「【需求拆分说明】」这类近似标题）。
 - 编号连续性（warn 级）基于历史出现过的编号（含已删除节点，rm 不制造跳号噪音）。
 
 ## lint 规则命名空间（rule id）
@@ -66,6 +67,31 @@ dtp lint --packet weekly.dtp --schema ./x.json   # 临时指定 schema
 - 绑定文件丢失 / JSON 坏 → 快速失败（`TEMPLATE_MISSING` / `SCHEMA_INVALID`），不产生 violations；
 - **版本不同 → `schema.drift` warn**（正常演进，message 带两版本，re-bind 后消失）；
 - **同版本不同 sha256 → `SCHEMA_DRIFT` error**（同版本内容变更视为可疑）。
+
+## 写路径强制校验（enforce）
+
+绑定后可开启编辑时校验（`metadata.template.enforce`）：
+
+| 命令 | 语义 |
+|------|------|
+| `dtp template bind <schema> --enforce` | 开启；**前置门**：包当前对该 schema 存在 error 级违规则拒绝（先 `dtp lint` 修数据） |
+| `dtp template bind <schema> --no-enforce` | 显式关闭 |
+| `dtp template bind <schema>`（不给 flag） | **保持现值**（首绑则不写该字段，元数据最小） |
+
+行为：
+
+- `add`/`update` 在**写入前**对候选节点终态跑其适用规则（`evaluateNode`，非全包 lint）；error 级违规 → `SCHEMA_VIOLATION`（exit 1，`error.violations` 逐条 rule/message/hint），**包文件字节零变化**。
+- warn 级（`id.continuity`、`schema.drift`）不拦截；随成功写入以 `schema_warnings` 透传（人类模式打印 ⚠）。
+- schema 三态与 lint 同源：文件丢失 `TEMPLATE_MISSING` / 非法 `SCHEMA_INVALID` / 同版本 sha 不符 `SCHEMA_DRIFT`（拒绝在校验不可信内容）；版本演进放行并附 `schema.drift` warn。
+- CLI 与 webui 编辑 API 共用同一 enforcer（webui 的 `add`/`update` 同样被拒）。
+
+已知限制（当前版本）：
+
+- **`rm` 不拦 `ref_exists` 悬挂**：删除被引用的节点会产生悬空引用（lint 事后可查，写路径不拦——破坏性操作自身已有 `--yes` 门槛）。
+- **`mv` / `checkout` 未接入**：移动可能造成 `parent.container` 违规、回滚可能恢复历史违规态，均属后续版本。
+- **enforce 态 `add` 需原子带全必填字段**：这是「输入即受约束」的产品承诺，不是缺陷——中途补字段的写法在 enforce 包内会被拦（未开启则不受影响）。
+
+逃生路径：先修数据（`dtp lint --packet <p>` 看逐条明细）或 `--no-enforce` 关闭；不提供按次跳过参数。
 
 ## 与旧模版的对应关系
 

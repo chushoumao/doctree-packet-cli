@@ -106,7 +106,7 @@ dtp web
 | `dtp verify` | 校验哈希 / 父子引用 / 索引一致性 / 版本单调性等 9 项 |
 | `dtp recover` | 列出或恢复备份（`--from n`） |
 | `dtp web` | 启动可视化控制台（webui）：树浏览 / 查询 / 统计 / 校验 / 模版管理 / 编辑，与 CLI 共享引擎与文件锁。`--port` `--host` `--dir` `--open` |
-| `dtp template new\|check\|bind` | 模版管理：`new` 生成 schema 骨架、`check` 自检（正则可编译 / 引用存在 / 无环）、`bind` 绑定到包（先自检，无效 schema 拒写） |
+| `dtp template new\|check\|bind` | 模版管理：`new` 生成 schema 骨架、`check` 自检（正则可编译 / 引用存在 / 无环）、`bind` 绑定到包（先自检，无效 schema 拒写；`--enforce`/`--no-enforce` 开关写路径强制校验，开启前有 lint 前置门，不给 flag 保持现值） |
 | `dtp lint` | 按绑定的模版 schema 校验包符合性（骨架 / 字段 / 引用 / 编号，只读）。零参数按包内绑定发现，`--schema <path>` 临时指定 |
 
 **全局选项**（可放在任意位置）：`--packet <path>`（默认 `./packet.dtp`）、`--json`、`--pretty`、`--quiet`、`--user <name>`（默认取环境变量 `DTP_USER`）、`--help`、`--version`。
@@ -114,6 +114,22 @@ dtp web
 ### 数据包模版（schema）
 
 数据包格式约定的**单一事实源**是声明式 schema。工作流：`dtp template new` 生成骨架 → 编辑成自己的约定 → `dtp template check` 自检 → `dtp init --template` 派生建包（或 `dtp template bind` 绑定已有包）→ `dtp lint` 符合性校验。DSL 与 lint 规则完整说明见 **[docs/templates/README.md](docs/templates/README.md)**（权威文档，此处不展开）。
+
+### 写路径强制校验（enforce）
+
+绑定模版的包可**开启编辑时校验**：违规的 `add`/`update` 被即时拒绝（`SCHEMA_VIOLATION`，error 对象带 `violations` 数组逐条 rule/message/hint），无需事后 lint 补救。
+
+```bash
+dtp template bind tier.schema.json --enforce      # 开启（包内需先无 error 级违规，否则拒绝）
+dtp template bind tier.schema.json --no-enforce   # 显式关闭
+dtp template bind tier.schema.json                # 都不给 → 保持现值（re-bind 不会静默改变开关）
+```
+
+- 开关状态：`bind` 与 `lint` 输出均可见（`template.enforce`）。
+- 分级：仅 **error 级**拦截；warn 级（如编号跳号 `id.continuity`）不阻断，随成功写入以 `schema_warnings` 字段透传（人类模式打印 ⚠ 行）。
+- 逃生路径：**先修数据**（`dtp lint` 看明细）或 `--no-enforce` 临时关闭；不提供按次跳过参数——append-only 下「先写坏再修」会留下永久历史。
+- 正文约定：`content_sections` 是**精确匹配**——段落标题必须规范（`【需求拆分】`），括注/修饰写进段内正文（`【需求拆分（草案）】` 这类变体标题不会被命中）。
+- 需知（产品承诺）：enforce 态下 `add` 必须**一次性带全必填字段**（中途补 ext 会被拦）；`rm` 可能产生指向已删节点的 `ref_exists` 悬挂引用（写路径不拦，lint 事后可见）；`mv`/`checkout` 的写路径校验属后续版本。
 
 用 dtp 管理需求与回归登记的协作流程（需求侧 / 实现侧 / 回归侧三会话，故事与任务闭环）见 **[docs/playbook-story-collab.md](docs/playbook-story-collab.md)**。
 
@@ -172,7 +188,7 @@ dtp get 不存在的节点 --json
 # {"ok":false,"error":{"code":"NOT_FOUND","message":"节点不存在：不存在的节点"}}
 ```
 
-常用错误码：`USAGE`（用法错误，退出码 2）、`NO_PACKET`、`NOT_FOUND`、`AMBIGUOUS_ID`、`NODE_DELETED`、`ID_EXISTS`、`EXT_IMMUTABLE`、`MOVE_CYCLE`、`VERSION_NOT_FOUND`、`LOCKED`、`STRUCTURE`、`CORRUPT_LINE`、`EXISTS`（退出码 2）、`INVALID_TYPE`、`INVALID_STATUS`（退出码 2）、`SCHEMA_INVALID`、`SCHEMA_DRIFT`、`TEMPLATE_MISSING`、`INTERNAL`。
+常用错误码：`USAGE`（用法错误，退出码 2）、`NO_PACKET`、`NOT_FOUND`、`AMBIGUOUS_ID`、`NODE_DELETED`、`ID_EXISTS`、`EXT_IMMUTABLE`、`MOVE_CYCLE`、`VERSION_NOT_FOUND`、`LOCKED`、`STRUCTURE`、`CORRUPT_LINE`、`EXISTS`（退出码 2）、`INVALID_TYPE`、`INVALID_STATUS`（退出码 2）、`SCHEMA_INVALID`、`SCHEMA_DRIFT`、`TEMPLATE_MISSING`、`SCHEMA_VIOLATION`（写路径强制校验拦截，error 对象附 `violations` 数组）、`CONFIG_INVALID`、`INTERNAL`。
 
 退出码：`0` 成功；`2` 用法/文件已存在；`1` 其他错误；`verify` 发现问题时退出码为 `1` 且正常输出报告。
 

@@ -1,7 +1,7 @@
 {
   "name": "user-stories",
-  "version": "1.0.0",
-  "comment": "用户故事工作流模版（.agents/skills/user-stories/SKILL.md 的机器化表达）。故事 US-NNN 登记在故事池，任务 TASK-NNN 挂所属故事下；task 的 acceptance 必须是 JSON 数组、approved 前须回填 done_evidence；故事层不要求 done_evidence（approved = 排期/交付语义）。",
+  "version": "1.0.1",
+  "comment": "用户故事工作流模版（.agents/skills/user-stories/SKILL.md 的机器化表达）。故事 US-NNN 登记在故事池，任务 TASK-NNN 挂所属故事下；task 的 acceptance 必须是 JSON 数组、approved 前须回填 done_evidence；故事层不要求 done_evidence（approved = 排期/交付语义）。【正文约定】content 段落标题必须精确匹配（如「【需求拆分】」），括注/修饰写进段内正文——变体标题（如「【需求拆分（草案）】」）不会被 content_sections 命中。",
   "skeleton": [
     {
       "id": "f_stories",
