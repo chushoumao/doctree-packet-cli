@@ -1,6 +1,6 @@
 import { DtpError } from '../errors.js'
 import { parseExtAssignments } from '../model/node.js'
-import { hashWarnFields } from './_shared.js'
+import { hashWarnFields, schemaWarnFields } from './_shared.js'
 import { shortId, color, TYPE_COLOR, STATUS_COLOR, publicNode } from '../output.js'
 
 export const command = {
@@ -39,13 +39,16 @@ export const command = {
       })
       packet.save()
       const nodePath = packet.pathOf(node.id)
-      ctx.out.ok({ node: publicNode(node), path: nodePath, ...hashWarnFields(packet) }, () => {
+      ctx.out.ok({ node: publicNode(node), path: nodePath, ...hashWarnFields(packet), ...schemaWarnFields(packet) }, () => {
         console.log(
           `已添加 ${shortId(node.id)}「${node.title}」 ` +
             `${TYPE_COLOR[node.node_type]?.(node.node_type) ?? node.node_type}` +
             `·${STATUS_COLOR[node.status]?.(node.status) ?? node.status} v1`
         )
         console.log(color.dim(`路径: ${nodePath}`))
+        for (const w of packet.__schemaWarnings ?? []) {
+          console.log(`${color.yellow('⚠')} [${w.rule}] ${w.message}`)
+        }
       })
     })
   },

@@ -87,9 +87,22 @@ export class Output {
 
   error(e) {
     if (this.json) {
-      console.log(JSON.stringify({ ok: false, error: { code: e.code, message: e.message } }, null, this.pretty ? 2 : 0))
+      // details.violations（SCHEMA_VIOLATION）：结构化违规随 error 附带（复用 lint 形状）
+      const extra = e.details?.violations ? { violations: e.details.violations } : {}
+      console.log(JSON.stringify({ ok: false, error: { code: e.code, message: e.message, ...extra } }, null, this.pretty ? 2 : 0))
+    } else if (e.details?.violations?.length) {
+      // 人类模式逐条违规含 hint（--json 模式已在 stdout 单行内，不重复打印）
+      printViolations(e.details.violations)
     }
     console.error(`${color.red('dtp:')} ${e.message}`)
+  }
+}
+
+// 人类模式的违规明细（Output.error 人类分支调用；对齐 lint 的人类输出风格）
+export function printViolations(violations) {
+  for (const v of violations) {
+    console.error(`  ${color.red('✗')} [${v.rule}]${v.node_id ? ` ${color.dim(v.node_id)}` : ''} ${v.message}`)
+    if (v.hint) console.error(`    ${color.dim(v.hint)}`)
   }
 }
 

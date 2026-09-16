@@ -7,6 +7,7 @@ import { withLock } from './storage.js'
 import { Packet } from './packet.js'
 import { registry } from './commands/index.js'
 import { resolveDefaultPacket, packetMissingError } from './config.js'
+import { attachEnforcer } from './enforce.js'
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
 
@@ -40,6 +41,7 @@ export async function main(argv) {
     return process.exitCode ?? 0
   } catch (e) {
     const err = asDtpError(e)
+    // 结构化违规明细的人类呈现内聚在 Output.error（--json 走 stdout 单行、人类走 stderr 逐条）
     out.error(err)
     if (err.code === 'INTERNAL') {
       console.error(color.dim(e.stack ?? ''))
@@ -72,6 +74,8 @@ function makeContext(parsed, out) {
         throw packetMissingError(explicit ? { source: 'legacy' } : resolved, packetPath)
       }
       const packet = Packet.load(packetPath)
+      // 写路径强制校验接线（US-005）：未绑/未开启包零行为（attach 只读 metadata 标志）
+      attachEnforcer(packet)
       // 篡改巡检结果缓存：写命令据此在 JSON 输出附 warnings（不阻断写入）
       packet.__hashWarnings = packet.hashMismatches()
       if (packet.__hashWarnings.length) {

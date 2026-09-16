@@ -90,13 +90,21 @@ export const command = {
       {
         ok,
         packet: file,
-        template: { name: schema.name, version: schema.version },
+        // enforce 可见性（US-005）：绑定态才带该字段（--schema 临时模式无绑定语义）
+        template: {
+          name: schema.name,
+          version: schema.version,
+          ...(bound ? { enforce: bound.enforce === true } : {}),
+        },
         violations,
         error_count: errorCount,
         warn_count: warnCount,
       },
       () => {
-        console.log(`模版 ${schema.name} v${schema.version} → ${file}`)
+        console.log(
+          `模版 ${schema.name} v${schema.version} → ${file}` +
+            (bound ? (bound.enforce === true ? color.green(' · 强制校验已开启') : ' · 强制校验未开启') : '')
+        )
         for (const v of violations) {
           const tag = v.severity === 'error' ? color.red('✗') : color.yellow('⚠')
           const at = v.node_id ? ` ${color.dim(v.node_id)}` : ''

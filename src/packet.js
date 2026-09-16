@@ -42,6 +42,8 @@ export class Packet {
     this.warnings = rec.warnings
     this.pending = [] // 待追加的 JSONL 行
     this.structuralErrors = []
+    this.enforcer = null // 写路径校验钩子（US-005）：由 src/enforce.js 注入，Packet 不感知 schema
+    this.__schemaWarnings = [] // 校验 warn 级违规（不拦截，供命令层透传）
     this.rebuildIndexes()
   }
 
@@ -247,6 +249,28 @@ export class Packet {
     this.versions.set(node.id, list)
   }
 
+  // 写路径校验（US-005）：候选节点（已构建未提交）过 enforcer。
+  // error 级 → 抛 SCHEMA_VIOLATION（携带 violations，TASK-018 契约），调用方不 save 则包零写入；
+  // warn 级 → 累积到 __schemaWarnings 随成功写入透传（同 rule+message 去重，幂等多次写）
+  runEnforcer(candidate) {
+    if (!this.enforcer) return
+    const violations = this.enforcer.check(candidate)
+    const errors = violations.filter((v) => v.severity === 'error')
+    if (errors.length) {
+      throw new DtpError(
+        'SCHEMA_VIOLATION',
+        `写路径校验未通过（${errors.length} 项 error 级违规）：${errors[0].message}`,
+        { violations: errors }
+      )
+    }
+    for (const w of violations) {
+      if (w.severity !== 'warn') continue
+      if (!this.__schemaWarnings.some((x) => x.rule === w.rule && x.message === w.message)) {
+        this.__schemaWarnings.push(w)
+      }
+    }
+  }
+
   recordChange(nodeId, field, oldHash, newHash, user, ts, extra = {}) {
     // version：本次变更产生的节点版本号（删除时为被删节点的最后版本），供 history 精确关联；
     // 旧格式文件缺少该字段时按 timestamp 兜底匹配
@@ -298,6 +322,7 @@ export class Packet {
       status: normalizeStatus(status),
     }
     node.hash = computeNodeHash(node)
+    this.runEnforcer(node) // 提交前校验：违规抛出，pending/nodes 均未动
     this.nodes.set(nodeId, node)
     this.pushVersion(node)
     this.pending.push({ ...node })
@@ -369,6 +394,7 @@ export class Packet {
     next.version = (node.version ?? 0) + 1
     next.updated_at = nowIso()
     next.hash = computeNodeHash(next)
+    this.runEnforcer(next) // 提交前校验（候选节点终态，非变更字段子集——US-005 定稿）
     this.nodes.set(node.id, next)
     this.pushVersion(next)
     this.pending.push({ ...next })
@@ -427,6 +453,7 @@ export class Packet {
     const oldPath = this.pathOf(node.id)
     const next = { ...node, parent_id: parent.id, version: (node.version ?? 0) + 1, updated_at: now }
     next.hash = computeNodeHash(next)
+    this.runEnforcer(next) // 提交前校验（候选节点终态，非变更字段子集——US-005 定稿）
     this.nodes.set(node.id, next)
     this.pushVersion(next)
     this.pending.push({ ...next })

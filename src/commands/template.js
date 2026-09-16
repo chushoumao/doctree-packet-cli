@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 import { DtpError } from '../errors.js'
 import { parseSchema, checkSchema, relativeSchemaFile } from '../template.js'
 import { assertWritableOutput } from './_shared.js'
+import { command as lintCommand } from './lint.js'
 import { color } from '../output.js'
 
 const SUBCOMMANDS = ['new', 'check', 'bind']
@@ -96,8 +97,44 @@ function runCheck(ctx) {
   if (!ok) process.exitCode = 1
 }
 
+// lint 前置门（US-005 裁决①）：开启强制前先按待绑 schema 全包评估一遍，
+// error 级违规存在则拒绝（warn 不挡——连续性告警不该阻止开强制）。
+// 复用 lint 命令：以 --schema 指向待绑文件评估现有数据（首绑无既有绑定也能跑）
+function assertEnforceable(packet, packetPath, schemaFile) {
+  let captured = null
+  const prevExit = process.exitCode
+  try {
+    lintCommand.run({
+      packetPath,
+      opts: { schema: schemaFile },
+      load: () => packet,
+      out: {
+        ok(obj) {
+          captured = obj
+        },
+      },
+    })
+  } finally {
+    process.exitCode = prevExit ?? 0 // lint 有 error 会置 exitCode，用后复位
+  }
+  const errors = (captured?.violations ?? []).filter((v) => v.severity === 'error')
+  if (captured?.ok === false && errors.length) {
+    throw new DtpError(
+      'SCHEMA_VIOLATION',
+      `拒绝开启强制校验：当前包对该 schema 存在 ${errors.length} 项 error 级违规（先修数据：dtp lint --packet ${packetPath} --schema ${schemaFile}）`,
+      { violations: errors }
+    )
+  }
+  return captured
+}
+
 function runBind(ctx) {
   if (!ctx.args.target) throw new DtpError('USAGE', 'template bind 需要 <schema 文件路径>')
+  // enforce 三态（US-005 裁决②）：--enforce=true / --no-enforce=false / 都不给=保持现值
+  const on = ctx.opts.enforce === true
+  const off = ctx.opts['no-enforce'] === true
+  if (on && off) throw new DtpError('USAGE', '--enforce 与 --no-enforce 互斥')
+  const enforceFlag = on ? true : off ? false : null
   const { text, sha256, file } = readSchemaFile(ctx.args.target, { action: 'bind' })
   // 无效 schema 拒绝写入（先自检后进锁，坏 schema 不触碰包文件）
   const problems = checkSchema(text)
@@ -108,19 +145,29 @@ function runBind(ctx) {
   const template = { name: schema.name, version: schema.version, schema_sha256: sha256, file: '' }
   const rebound = ctx.withLock(() => {
     const packet = ctx.load()
-    const isRebind = packet.meta.metadata?.template != null
+    const prev = packet.meta.metadata?.template ?? null
+    // 前置门：开启强制前拒绝脏数据（在锁内、写入前——被拒则包零写入）
+    if (enforceFlag === true) assertEnforceable(packet, ctx.packetPath, file)
     // file 记相对包文件目录的路径（允许 ../，lint 按包目录解析）；
     // 包已加载成功，realpath 两侧归一不会 ENOENT
     template.file = relativeSchemaFile(ctx.packetPath, file)
+    // 元数据最小化：首绑且未给 flag 不写 enforce 字段；给了 flag 写显式值；未给且已绑则保持
+    if (enforceFlag !== null) template.enforce = enforceFlag
+    else if (prev?.enforce !== undefined) template.enforce = prev.enforce
     packet.meta.metadata ??= {}
     packet.meta.metadata.template = { ...template }
     packet.touchMeta() // 追加 packet_meta 行，不改写历史（append-only）
     packet.save()
-    return isRebind
+    return Boolean(prev)
   })
   ctx.out.ok({ packet: ctx.packetPath, template, rebound }, () => {
     console.log(
       `${rebound ? '已更新绑定' : '已绑定'}：${template.name} v${template.version} → ${ctx.packetPath}`
+    )
+    console.log(
+      template.enforce === true
+        ? color.green('强制校验：已开启（add/update 写路径拦截违规，见 US-005）')
+        : color.dim(template.enforce === false ? '强制校验：显式关闭（--no-enforce）' : '强制校验：未开启')
     )
     console.log(color.dim(`sha256 ${template.schema_sha256.slice(0, 12)}… · file ${template.file}`))
     console.log(color.dim('校验：dtp lint --packet ' + ctx.packetPath))
@@ -136,6 +183,8 @@ export const command = {
   ],
   options: {
     out: { arg: 'path', desc: '（仅 new）schema 输出路径，默认 ./<模版名>.schema.json' },
+    enforce: { desc: '（仅 bind）开启写路径强制校验（需包当前无 error 级违规）' },
+    'no-enforce': { desc: '（仅 bind）显式关闭强制校验；两者都不给则保持现值' },
   },
   example: [
     'dtp template new weekly && dtp template check weekly.schema.json',

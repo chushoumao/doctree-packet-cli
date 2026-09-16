@@ -1,5 +1,5 @@
 import { parseExtAssignments, normalizeTags } from '../model/node.js'
-import { hashWarnFields } from './_shared.js'
+import { hashWarnFields, schemaWarnFields } from './_shared.js'
 import { shortId, color, publicNode } from '../output.js'
 
 export const command = {
@@ -52,7 +52,7 @@ export const command = {
       packet.save()
       const nodePath = packet.pathOf(node.id)
       if (!changed) {
-        ctx.out.ok({ changed: false, node: publicNode(node), path: nodePath, ...hashWarnFields(packet) }, () => {
+        ctx.out.ok({ changed: false, node: publicNode(node), path: nodePath, ...hashWarnFields(packet), ...schemaWarnFields(packet) }, () => {
           console.log(color.dim('无变更（所有字段与当前值一致）'))
         })
         return
@@ -63,11 +63,15 @@ export const command = {
           node: publicNode(node),
           fields: changes.map((c) => c.field),
           ...hashWarnFields(packet),
+          ...schemaWarnFields(packet),
           path: nodePath,
         },
         () => {
           console.log(`已更新 ${shortId(node.id)}「${node.title}」 → v${node.version}`)
           console.log(color.dim(`变更字段: ${changes.map((c) => c.field).join(', ')}`))
+          for (const w of packet.__schemaWarnings ?? []) {
+            console.log(`${color.yellow('⚠')} [${w.rule}] ${w.message}`)
+          }
         }
       )
     })

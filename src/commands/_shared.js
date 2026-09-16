@@ -111,6 +111,11 @@ export function hashWarnFields(packet) {
   return packet.__hashWarnings?.length ? { warnings: packet.__hashWarnings } : {}
 }
 
+// 写路径校验 warn 透传（US-005）：与 warnings（篡改巡检）分键，避免语义混淆
+export function schemaWarnFields(packet) {
+  return packet.__schemaWarnings?.length ? { schema_warnings: packet.__schemaWarnings } : {}
+}
+
 // ---------- 输出文件预检（export / pack 共用） ----------
 
 // 目录不存在时 writeFileSync 会抛原始 ENOENT（被归类 INTERNAL，对调用方无行动指引），

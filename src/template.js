@@ -275,7 +275,7 @@ function checkRegex(problems, where, pattern) {
   }
 }
 
-// ---------- 第三段：evaluate ----------
+// ---------- 第三段：评估（evaluate 全包 / evaluateNode 单节点，US-005 写路径） ----------
 
 // 标题编号段 = 首个分隔符前的 token（如 "US-001 作为…" → "US-001"），
 // ref_exists 语义：ext 值与某存活节点 id 全等 或 编号段全等，不做模糊匹配
@@ -299,6 +299,53 @@ const HINTS = {
 
 // 包对模版符合性校验：纯函数、只读 packet，返回 violations[]
 // （{node_id?, rule, severity, message, hint}；有 error 才该 exit 1，由调用方决定）
+// 规则集编译缓存（WeakMap 按 schema 对象键控）：schema 对象视为不可变（parse 后勿改），
+// 同对象重复评估零编译成本。透明缓存——不改变任何输出与报错
+const compiledCache = new WeakMap()
+
+// 编译规则集：checkSchema 门 + 拓扑排序 + 正则预编译（evaluate / evaluateNode 共享）
+function compileRules(schema) {
+  const cached = compiledCache.get(schema)
+  if (cached) return cached
+  const problems = checkSchema(schema)
+  if (problems.length > 0) {
+    throw new DtpError('SCHEMA_INVALID', `schema 未通过自检（${problems.length} 处问题），先运行 dtp template check 修复`)
+  }
+  const rules = schema.rules ?? [] // checkSchema 允许省略 rules（仅骨架 schema）
+  const byId = new Map(rules.map((r) => [r.id, r]))
+  const ordered = []
+  const seenOrder = new Set()
+  const visit = (r) => {
+    if (seenOrder.has(r.id)) return
+    seenOrder.add(r.id)
+    const p = byId.get(r.scope.parent)
+    if (p) visit(p)
+    ordered.push(r)
+  }
+  for (const r of rules) visit(r)
+
+  // 预编译正则（schema 已过自检，理论上不会失败；仍兜底为 SCHEMA_INVALID 快速失败）
+  const compile = (p) => (p === undefined ? null : new RegExp(p))
+  const rx = new Map()
+  for (const r of rules) {
+    try {
+      rx.set(r.id, {
+        matchId: compile(r.match?.id),
+        matchTitle: compile(r.match?.title),
+        idPattern: compile(r.id_pattern),
+        titlePattern: compile(r.title_pattern),
+        numId: r.numbering ? new RegExp(`^${escapeRegExp(r.numbering.id_prefix)}(\\d+)$`) : null,
+        numTitle: r.numbering ? new RegExp(`^${escapeRegExp(r.numbering.title_prefix)}-(\\d+)`) : null,
+      })
+    } catch (e) {
+      throw new DtpError('SCHEMA_INVALID', `规则 ${r.id} 正则编译失败：${e.message}`)
+    }
+  }
+  const compiled = { rules, byId, ordered, rx }
+  compiledCache.set(schema, compiled)
+  return compiled
+}
+
 export function evaluate(schema, packet) {
   const problems = checkSchema(schema)
   if (problems.length > 0) {
@@ -318,7 +365,7 @@ export function evaluate(schema, packet) {
   }
 
   const violations = []
-  const rules = schema.rules ?? [] // checkSchema 允许省略 rules（仅骨架 schema）
+  const { rules, byId, ordered, rx } = compileRules(schema)
   const push = (rule, severity, message, nodeId) => {
     const v = { rule, severity, message, hint: HINTS[rule] }
     if (nodeId !== undefined) v.node_id = nodeId
@@ -354,37 +401,6 @@ export function evaluate(schema, packet) {
       push('skeleton.missing', 'error', `容器 ${c.id} 类型不符：期望 ${c.type ?? 'folder'}，实际 ${node.node_type}`)
     } else if (node.title !== c.title) {
       push('skeleton.missing', 'error', `容器 ${c.id} 标题不符：期望「${c.title}」，实际「${node.title}」`)
-    }
-  }
-
-  // ---- 规则拓扑排序（checkSchema 已保证引用存在且无环）----
-  const byId = new Map(rules.map((r) => [r.id, r]))
-  const ordered = []
-  const seenOrder = new Set()
-  const visit = (r) => {
-    if (seenOrder.has(r.id)) return
-    seenOrder.add(r.id)
-    const p = byId.get(r.scope.parent)
-    if (p) visit(p)
-    ordered.push(r)
-  }
-  for (const r of rules) visit(r)
-
-  // 预编译正则（schema 已过自检，理论上不会失败；仍兜底为 SCHEMA_INVALID 快速失败）
-  const compile = (p) => (p === undefined ? null : new RegExp(p))
-  const rx = new Map()
-  for (const r of rules) {
-    try {
-      rx.set(r.id, {
-        matchId: compile(r.match?.id),
-        matchTitle: compile(r.match?.title),
-        idPattern: compile(r.id_pattern),
-        titlePattern: compile(r.title_pattern),
-        numId: r.numbering ? new RegExp(`^${escapeRegExp(r.numbering.id_prefix)}(\\d+)$`) : null,
-        numTitle: r.numbering ? new RegExp(`^${escapeRegExp(r.numbering.title_prefix)}-(\\d+)`) : null,
-      })
-    } catch (e) {
-      throw new DtpError('SCHEMA_INVALID', `规则 ${r.id} 正则编译失败：${e.message}`)
     }
   }
 
@@ -512,6 +528,137 @@ export function evaluate(schema, packet) {
     }
   }
 
+  return violations
+}
+
+// 单节点评估（US-005 写路径强制）：对候选节点跑其适用规则，返回 violations[]。
+// 纯函数只读 packet。与 evaluate 的字段检查同构——修改规则集时两处同步（测试矩阵守护）。
+// 与 evaluate 的差异：无骨架检查（候选不是容器）、structuralErrors 改报 packet.structure
+// violation（写路径与 lint 的消费形状统一）、连续性只做「候选相关」warn（新增跳号与
+// title/id 不一致），历史空洞不在单节点职责内
+export function evaluateNode(schema, candidate, packet) {
+  const { rules, byId, ordered, rx } = compileRules(schema)
+  const violations = []
+  const push = (rule, severity, message, nodeId) => {
+    const v = { rule, severity, message, hint: HINTS[rule] }
+    if (nodeId !== undefined) v.node_id = nodeId
+    violations.push(v)
+  }
+  const safeTest = (re, value, { rule, node, where, failRule, failMsg } = {}) => {
+    let ok
+    try {
+      ok = re.test(value)
+    } catch (e) {
+      push('regex.runtime', 'error', `规则 ${rule} 的正则执行失败（${where}：${String(re.source).slice(0, 40)}…）：${e.message}`, node?.id)
+      return false
+    }
+    if (!ok && failRule) push(failRule, 'error', failMsg, node?.id)
+    return ok
+  }
+  const isClaimed = (r, node) => {
+    const c = rx.get(r.id)
+    return (
+      (c.matchId ? safeTest(c.matchId, node.id, { rule: r.id, node, where: 'match.id' }) : false) ||
+      (c.matchTitle ? safeTest(c.matchTitle, node.title, { rule: r.id, node, where: 'match.title' }) : false)
+    )
+  }
+
+  // 结构破损：单条违规（写路径与 lint 消费形状统一，调用方可照常按 severity 拦截）
+  if (packet.structuralErrors?.length) {
+    push('packet.structure', 'error', '包结构异常，跳过候选节点评估', undefined)
+    return violations
+  }
+
+  // 认领集：规则引用 scope 的父集判定需要（候选自身不在 packet，天然不计入）
+  const claimedBy = new Map()
+  for (const r of rules) {
+    const set = new Set()
+    for (const node of packet.nodes.values()) if (isClaimed(r, node)) set.add(node.id)
+    claimedBy.set(r.id, set)
+  }
+  // ref_exists 可解析目标：存活节点 id + 标题编号段（候选自身排除——自引用无意义）
+  const liveRefs = new Set()
+  for (const node of packet.nodes.values()) {
+    liveRefs.add(node.id)
+    liveRefs.add(codeOfTitle(node.title))
+  }
+
+  for (const r of ordered) {
+    const c = rx.get(r.id)
+    if (!isClaimed(r, candidate)) continue
+    const parentSet = byId.has(r.scope.parent) ? claimedBy.get(r.scope.parent) : new Set([r.scope.parent])
+    // 挂错父：定位问题优先，不做字段检查叠加（与 evaluate 同构）
+    if (candidate.parent_id == null || !parentSet.has(candidate.parent_id)) {
+      const where = candidate.parent_id == null ? '根' : `「${packet.nodes.get(candidate.parent_id)?.title ?? candidate.parent_id}」`
+      push('parent.container', 'error', `节点 ${candidate.id}「${candidate.title}」被规则 ${r.id} 认领，但挂在 ${where} 下而非该规则 scope 内`, candidate.id)
+      continue
+    }
+    const ext = candidate.extensions ?? {}
+    const tags = new Set(candidate.tags ?? [])
+    if (c.idPattern) {
+      safeTest(c.idPattern, candidate.id, { rule: r.id, node: candidate, where: 'id_pattern', failRule: 'id.pattern', failMsg: `节点 ${candidate.id} 的 id 不符合规则 ${r.id} 的模式 ${r.id_pattern}` })
+    }
+    if (c.titlePattern) {
+      safeTest(c.titlePattern, candidate.title, { rule: r.id, node: candidate, where: 'title_pattern', failRule: 'title.pattern', failMsg: `节点 ${candidate.id}「${candidate.title}」的标题不符合规则 ${r.id} 的模式 ${r.title_pattern}` })
+    }
+    for (const key of r.ext_required ?? []) {
+      if (ext[key] == null || ext[key] === '') {
+        push('ext.required', 'error', `节点 ${candidate.id} 缺少必填扩展字段 "${key}"（规则 ${r.id}）`, candidate.id)
+      }
+    }
+    for (const key of r.ext_arrays ?? []) {
+      const v = ext[key]
+      if (v !== undefined && v !== null && !Array.isArray(v)) {
+        push('ext.arrays', 'error', `节点 ${candidate.id} 的扩展字段 "${key}" 必须是数组，实际为 ${typeof v}`, candidate.id)
+      }
+    }
+    for (const t of r.tags_require ?? []) {
+      if (!tags.has(t)) {
+        push('tags.require', 'error', `节点 ${candidate.id}「${candidate.title}」缺少必填标签 "${t}"（规则 ${r.id}）`, candidate.id)
+      }
+    }
+    for (const sec of r.content_sections ?? []) {
+      if (!String(candidate.content ?? '').includes(sec)) {
+        push('content.sections', 'error', `节点 ${candidate.id} 正文缺少段落「${sec}」（规则 ${r.id}）`, candidate.id)
+      }
+    }
+    for (const key of r.ref_exists ?? []) {
+      const v = ext[key]
+      const target = typeof v === 'string' ? v.trim() : null
+      if (!target) {
+        push('ref_exists', 'error', `节点 ${candidate.id} 的引用字段 "${key}" 缺失或非字符串（规则 ${r.id}）`, candidate.id)
+      } else if (!liveRefs.has(target)) {
+        push('ref_exists', 'error', `节点 ${candidate.id} 的 "${key}"=${JSON.stringify(v)} 不指向任何存活节点（编号或 id）`, candidate.id)
+      }
+    }
+    const evidenceKeys = r.status_evidence?.[candidate.status]
+    if (evidenceKeys) {
+      for (const key of evidenceKeys) {
+        if (ext[key] == null || ext[key] === '') {
+          push('status.evidence', 'error', `节点 ${candidate.id} 状态为 ${candidate.status} 但缺少 "${key}"（规则 ${r.id}）`, candidate.id)
+        }
+      }
+    }
+    // 连续性（warn，不阻断）：新增编号跳号 + title/id 编号一致性
+    if (r.numbering) {
+      const mId = c.numId.exec(candidate.id)
+      const mTitle = c.numTitle.exec(candidate.title)
+      if (mId && candidate.version === 1) {
+        const seen = new Set()
+        for (const id of packet.versions.keys()) {
+          const m = c.numId.exec(id)
+          if (m) seen.add(parseInt(m[1], 10))
+        }
+        const max = seen.size ? Math.max(...seen) : 0
+        if (parseInt(mId[1], 10) > max + 1) {
+          push('id.continuity', 'warn', `新增编号 ${parseInt(mId[1], 10)} 跳过未用编号 ${max + 1}..${parseInt(mId[1], 10) - 1}（规则 ${r.id}）`)
+        }
+      }
+      if (mId && mTitle && parseInt(mId[1], 10) !== parseInt(mTitle[1], 10)) {
+        push('id.continuity', 'warn', `节点 ${candidate.id} 的 title 编号 ${r.numbering.title_prefix}-${parseInt(mTitle[1], 10)} 与 id 编号 ${parseInt(mId[1], 10)} 不一致`, candidate.id)
+      }
+    }
+  }
   return violations
 }
 

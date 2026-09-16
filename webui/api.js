@@ -18,6 +18,7 @@ import {
 } from '../src/model/node.js'
 import { DtpError, asDtpError } from '../src/errors.js'
 import { parseSchema, checkSchema, skeletonLines, relativeSchemaFile } from '../src/template.js'
+import { attachEnforcer } from '../src/enforce.js'
 import { command as verifyCommand } from '../src/commands/verify.js'
 import { command as historyCommand } from '../src/commands/history.js'
 import { command as templateCommand } from '../src/commands/template.js'
@@ -164,10 +165,16 @@ function mutate(p, fn) {
   const file = resolvePacketFile(p)
   return withLock(file, () => {
     const packet = Packet.load(file)
+    attachEnforcer(packet) // 写路径强制校验（US-005）：与 CLI 同一接线
     const warnings = packet.hashMismatches()
     const result = fn(packet)
     const appended = packet.save()
-    return { appended, warnings, ...result }
+    return {
+      appended,
+      warnings,
+      ...(packet.__schemaWarnings.length ? { schema_warnings: packet.__schemaWarnings } : {}),
+      ...result,
+    }
   })
 }
 
@@ -723,6 +730,8 @@ export function handleApi(method, pathname, query, body) {
     const err = asDtpError(e)
     const status = STATUS_BY_CODE[err.code] ?? 400
     if (status === 500) console.error('[dtp-web]', e.stack ?? e)
-    return { status, body: { ok: false, error: { code: err.code, message: err.message } } }
+    // SCHEMA_VIOLATION（US-005）：violations 随 error 附出（与 CLI --json 契约一致，UI/Agent 可消费）
+    const extra = err.details?.violations ? { violations: err.details.violations } : {}
+    return { status, body: { ok: false, error: { code: err.code, message: err.message, ...extra } } }
   }
 }
