@@ -46,6 +46,16 @@ test('扩展字段匹配：字符串 / 数字 / 深比较', () => {
   )
 })
 
+test('全文关键字：命中标签（US-004 OPTIM-006），大小写不敏感', () => {
+  // auth 仅出现在 r1 的标签里（标题/描述/正文都没有）——keyword 语义扩展后应命中
+  assert.deepEqual(filterNodes(packet, { keyword: 'auth' }).map((n) => n.id), ['r1'])
+  assert.deepEqual(filterNodes(packet, { keyword: 'AUTH' }).map((n) => n.id), ['r1'], '大小写不敏感')
+  // --tag 精确语义保持：keyword auth 是子串检索、tag auth 是精确等值，结果一致但机制不同
+  assert.deepEqual(filterNodes(packet, { tags: ['auth'] }).map((n) => n.id), ['r1'])
+  // 未命中标签词不受影响
+  assert.equal(filterNodes(packet, { keyword: 'nonexistent-tag' }).length, 0)
+})
+
 test('全文关键字：标题/描述/正文，不区分大小写', () => {
   assert.deepEqual(filterNodes(packet, { keyword: '验证码' }).map((n) => n.id).sort(), ['r1', 'r2'])
   assert.deepEqual(filterNodes(packet, { keyword: '不存在词' }), [])

@@ -25,6 +25,11 @@ beforeEach(() => {
   // ISSUE-021：自定义长 id 前 8 位碰撞
   packet.addNode({ parentRef: root.id, id: 'abcdefgh', title: '长ID甲' })
   packet.addNode({ parentRef: root.id, id: 'abcdefghx', title: '长ID乙' })
+  // OPTIM-015：md 语法字符标题（强调/链接/代码/层级/删除线/HTML）
+  packet.addNode({
+    parentRef: root.id, id: 'md', title: '*粗* [链](x) #tag `code` _斜_ <div> ~删~ \\反斜',
+  })
+  packet.addNode({ parentRef: root.id, id: 'plain', title: '常规中文标题：用户认证模块 v1.0' })
 })
 
 test('ISSUE-019: md 导出保留正文连续空行（含代码块内）', () => {
@@ -80,4 +85,39 @@ test('md/html 基本形状不回退：层级递进、meta 行、转义', () => {
   assert.ok(html.includes('<!doctype html>'))
   assert.ok(html.includes('<h2>父节点</h2>'), 'depth1 仍为 h2')
   assert.ok(html.includes('<h1>导出包</h1>'), '根节点 h1')
+})
+
+// ---------- OPTIM-015：md 标题行内转义 ----------
+
+test('OPTIM-015: md 标题语法字符被转义——层级保持、无注入、原文可还原', () => {
+  const md = toMarkdown(packet, packet.root().id)
+  const headLine = md.split('\n').find((l) => l.startsWith('## ') && l.includes('粗'))
+  assert.ok(headLine, '找到该节点的二级标题行')
+  // 层级由 # 前缀决定，不受标题内 # 影响
+  assert.ok(headLine.startsWith('## '))
+  // 行内语法字符全部带反斜杠（转义集：\ ` * _ [ ] # < ~）
+  for (const esc of ['\\*粗\\*', '\\[链\\](x)', '\\#tag', '\\`code\\`', '\\_斜\\_', '\\<div\\>', '\\~删\\~']) {
+    assert.ok(headLine.includes(esc), `应含转义序列 ${esc}；实际行：${headLine}`)
+  }
+  // 原文可还原：去掉转义反斜杠后等于原标题
+  const rendered = headLine.replace(/^## /, '').replaceAll('\\#', '#').replaceAll('\\*', '*')
+    .replaceAll('\\`', '`').replaceAll('\\_', '_').replaceAll('\\[', '[').replaceAll('\\]', ']')
+    .replaceAll('\\<', '<').replaceAll('\\>', '>').replaceAll('\\~', '~').replaceAll('\\\\', '\\')
+  assert.equal(rendered, '*粗* [链](x) #tag `code` _斜_ <div> ~删~ \\反斜')
+  // 无裸注入：标题行内不存在未转义的强调/链接起点
+  assert.ok(!/\*粗\*/.test(headLine))
+  assert.ok(!/\[链\]\(x\)/.test(headLine))
+})
+
+test('OPTIM-015: 常规中英文标题零转义噪音', () => {
+  const md = toMarkdown(packet, packet.root().id)
+  const line = md.split('\n').find((l) => l.startsWith('## 常规中文标题'))
+  assert.ok(line)
+  assert.equal(line, '## 常规中文标题：用户认证模块 v1.0', '常规标题零反斜杠')
+})
+
+test('OPTIM-015: HTML 导出不回归（标题/TOC 仍 escapeHtml 转义）', () => {
+  const html = toHtml(packet, packet.root().id)
+  assert.ok(html.includes('&lt;div&gt;'), '标题经 escapeHtml')
+  assert.ok(html.includes('<h2>*粗* [链](x) #tag `code` _斜_ &lt;div&gt; ~删~ \\反斜</h2>') || !html.includes('<h2><div>'), '无原始 HTML 注入')
 })

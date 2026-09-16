@@ -1,7 +1,7 @@
 // 新增摩擦点 OPTIM-010/011 回归：ls --limit 与 query --parent
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { runJson, makePacket, tmpdir, path } from './helpers.js'
+import { runDtp, runJson, makePacket, tmpdir, path } from './helpers.js'
 
 function seed() {
   const dir = tmpdir('dtp-lsq-')
@@ -86,4 +86,52 @@ test('OPTIM-011: query --parent 父节点不存在报 NOT_FOUND、空值报 USAG
   const empty = runJson(['query', '--parent', '', '--packet', file])
   assert.equal(empty.status, 2)
   assert.equal(empty.data.error.code, 'USAGE')
+})
+
+// ---------- OPTIM-017：query/ls 表格 EXT 摘要段 ----------
+
+test('OPTIM-017: 表格 EXT 摘要段——数组计数、标量、对象、无扩展为空', () => {
+  const dir = tmpdir('dtp-ext-')
+  const file = path.join(dir, 'p.dtp')
+  makePacket(file, { name: '扩展摘要包' })
+  runDtp(['add', '/', '--id', 'x1', '--title', '带扩展', '--ext', 'priority=P0', '--ext', 'acceptance=["a","b","c"]', '--ext', 'meta={"k":1}', '--packet', file, '--json'])
+  runDtp(['add', '/', '--id', 'x2', '--title', '无扩展', '--packet', file, '--json'])
+
+  // 人类表格：EXT 列摘要
+  const out = runDtp(['query', '--packet', file])
+  const lines = out.stdout.split('\n')
+  const rowX1 = lines.find((l) => l.includes('x1'))
+  assert.ok(rowX1.includes('priority=P0'), `标量摘要：${rowX1}`)
+  assert.ok(rowX1.includes('acceptance×3'), `数组计数摘要：${rowX1}`)
+  assert.ok(rowX1.includes('meta={…}'), `对象摘要：${rowX1}`)
+  const rowX2 = lines.find((l) => l.includes('x2'))
+  assert.ok(!rowX2.includes('='), '无扩展节点不出现摘要段')
+  // ls 同享（同一 printNodeTable）
+  const lsOut = runDtp(['ls', '--packet', file])
+  assert.ok(lsOut.stdout.includes('acceptance×3'), 'ls 与 query 共享摘要列')
+})
+
+test('OPTIM-017: 超长摘要截断加省略号（视觉宽 ≤60+…）', () => {
+  const dir = tmpdir('dtp-ext2-')
+  const file = path.join(dir, 'p.dtp')
+  makePacket(file, { name: '截断包' })
+  const longVal = 'v'.repeat(120)
+  runDtp(['add', '/', '--id', 'long1', '--title', '长值节点', '--ext', `note=${longVal}`, '--packet', file, '--json'])
+  const out = runDtp(['query', '--packet', file])
+  const row = out.stdout.split('\n').find((l) => l.includes('…'))
+  assert.ok(row && row.includes('…'), '超长摘要应有省略号')
+  // 截断后不含完整 120 长值（防溢出证明）
+  assert.ok(!out.stdout.includes('v'.repeat(120)))
+})
+
+test('OPTIM-017: --json 输出零变更（extensions 完整保留）', () => {
+  const dir = tmpdir('dtp-ext3-')
+  const file = path.join(dir, 'p.dtp')
+  makePacket(file, { name: '契约包' })
+  runDtp(['add', '/', '--id', 'x1', '--title', '带扩展', '--ext', 'priority=P0', '--ext', 'acceptance=["a","b","c"]', '--packet', file, '--json'])
+  const r = JSON.parse(runDtp(['query', '--packet', file, '--json']).stdout)
+  const n = r.nodes.find((x) => x.id === 'x1')
+  assert.deepEqual(n.extensions, { priority: 'P0', acceptance: ['a', 'b', 'c'] })
+  const ls = JSON.parse(runDtp(['ls', '--packet', file, '--json']).stdout)
+  assert.equal(ls.nodes.find((x) => x.id === 'x1').extensions.priority, 'P0')
 })

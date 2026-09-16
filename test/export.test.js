@@ -20,7 +20,8 @@ beforeEach(() => {
 test('Markdown：标题层级递进、元信息、正文', () => {
   const md = toMarkdown(packet, packet.root().id)
   assert.ok(md.includes('# 演示'))
-  assert.ok(md.includes('## 功能 <重点>'))
+  // OPTIM-015：标题行内转义后 < > 带反斜杠（渲染输出仍为 <重点>）
+  assert.ok(md.includes('## 功能 \\<重点\\>'))
   assert.ok(md.includes('### 子项'))
   assert.ok(md.includes('> status: draft · tags: P0 · version: v1'))
   assert.ok(md.includes('> 描述行1\n> 描述行2'))
