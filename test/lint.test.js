@@ -70,7 +70,7 @@ test('lint：绑定包零参数发现 schema，合规包 ok:true / 0 违规 / ex
   assert.equal(r.error_count, 0)
   assert.equal(r.warn_count, 0)
   assert.deepEqual(r.violations, [])
-  assert.deepEqual(r.template, { name: 'us', version: '1.0.0' })
+  assert.deepEqual(r.template, { name: 'us', version: '1.0.0', enforce: false }, '绑定态带 enforce 可见性字段（US-005）')
   assert.equal(s.lintRaw().status, 0)
 
   // 换 cwd（包绝对路径）：schema 按「包目录」而非进程 cwd 解析
