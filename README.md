@@ -95,7 +95,7 @@ dtp web
 | `dtp mv <node> <newParent>` | 移动子树，路径索引自动更新（含成环检测） |
 | `dtp ls [path]` | 列出直接子节点，`-r/--recursive` 递归列出子树 |
 | `dtp tree [node]` | 树形打印，`--depth` 限深 |
-| `dtp query` | 组合过滤：`--tag` `--type` `--status` `--ext k=v` `--keyword` `--path` `--limit` |
+| `dtp query` | 组合过滤：`--tag` `--type` `--status` `--ext k=v` `--keyword`（标题+描述+正文+标签） `--path` `--limit` |
 | `dtp get <node>` | 显示节点完整信息 |
 | `dtp get-path <path>` | 通过语义路径获取节点 |
 | `dtp history <node>` | 版本演进与变更历史（已删除节点亦可查看） |
