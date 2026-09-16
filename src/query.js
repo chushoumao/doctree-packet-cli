@@ -2,7 +2,7 @@ import { canonicalJson } from './hash.js'
 import { normalizePathString } from './path.js'
 
 // 组合过滤：同一维度多个取值为 OR（任一命中），跨维度为 AND
-// 支持维度：tags / types / statuses / ext（key=value 深比较）/ keyword（标题+描述+正文）/ path（全路径前缀）/ parentId（父节点直接子节点）
+// 支持维度：tags / types / statuses / ext（key=value 深比较）/ keyword（标题+描述+正文+标签，US-004 OPTIM-006）/ path（全路径前缀）/ parentId（父节点直接子节点）
 export function filterNodes(packet, criteria = {}) {
   let list = [...packet.nodes.values()]
   const { tags = [], types = [], statuses = [], ext = [], keyword, pathPrefix, parentId } = criteria
@@ -20,8 +20,11 @@ export function filterNodes(packet, criteria = {}) {
   }
   if (keyword) {
     const kw = String(keyword).toLowerCase()
+    // 标签以空格拼接进 haystack：多标签间天然有词边界，不会产生跨标签误拼命中
     list = list.filter((n) =>
-      [n.title, n.description, n.content].some((s) => String(s ?? '').toLowerCase().includes(kw))
+      [n.title, n.description, n.content, (n.tags ?? []).join(' ')].some((s) =>
+        String(s ?? '').toLowerCase().includes(kw)
+      )
     )
   }
   if (pathPrefix) {

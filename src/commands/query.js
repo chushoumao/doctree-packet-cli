@@ -13,7 +13,7 @@ export const command = {
     type: { arg: 'type', multi: true, desc: '节点类型，可多个' },
     status: { arg: 'status', multi: true, desc: '状态，可多个' },
     ext: { arg: 'k=v', multi: true, desc: '扩展字段精确匹配（跨字段为“与”）' },
-    keyword: { arg: 'text', desc: '全文关键字（标题+描述+正文，不区分大小写）' },
+    keyword: { arg: 'text', desc: '全文关键字（标题+描述+正文+标签，不区分大小写）' },
     path: { arg: 'path', desc: '语义路径前缀（从根开始）' },
     parent: { arg: 'ref', desc: '仅返回该父节点的直接子节点（id/唯一前缀/语义路径）' },
     limit: { arg: 'n', desc: '最多返回条数' },

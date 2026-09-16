@@ -8,6 +8,11 @@ function metaLine(n) {
   return parts.join(' · ')
 }
 
+// md 行内转义（US-004 OPTIM-015）：标题文本中的语法字符防下游渲染成强调/链接/代码/层级。
+// 转义集 = 标题行内具有行内语法含义的最小集：\ ` * _ [ ] # < ~。
+// 反斜杠转义仅对 ASCII 标点生效——常规中英文标题零反斜杠噪音，渲染输出与原文一致（可还原）
+const escapeMdInline = (s) => String(s ?? '').replace(/[\\`*_[\]#<>~]/g, (c) => '\\' + c)
+
 export function toMarkdown(packet, rootId) {
   // ISSUE-019：按节点分块拼接，content 原样嵌入（仅 trim 拼接边界），
   // 不做全文空行压缩——原 replace(/\n{3,}/g) 会无差别作用于正文/代码块内部，静默改写原文
@@ -16,7 +21,7 @@ export function toMarkdown(packet, rootId) {
     const n = packet.nodes.get(id)
     if (!n) return
     const level = Math.min(depth + 1, 6)
-    const head = ['#'.repeat(level) + ' ' + n.title, '', '> ' + metaLine(n)]
+    const head = ['#'.repeat(level) + ' ' + escapeMdInline(n.title), '', '> ' + metaLine(n)]
     if (n.description) {
       head.push('', '> ' + n.description.split('\n').map((l) => l.trim()).join('\n> '))
     }

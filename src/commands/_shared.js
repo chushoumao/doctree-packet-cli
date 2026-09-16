@@ -2,18 +2,48 @@ import readline from 'node:readline/promises'
 import fs from 'node:fs'
 import path from 'node:path'
 import { DtpError } from '../errors.js'
-import { renderTable, TYPE_COLOR, STATUS_COLOR, shortId, color, publicNode } from '../output.js'
+import { renderTable, TYPE_COLOR, STATUS_COLOR, shortId, color, publicNode, visualWidth } from '../output.js'
 
 // ---------- 节点表格 / 详情（ls / query / get 共用） ----------
 
+// 视觉宽度感知截断（CJK 计 2 列）：超 max 截断加 …，保证表格列宽可控
+function truncateVisual(s, max) {
+  if (visualWidth(s) <= max) return s
+  let w = 0
+  let out = ''
+  for (const ch of String(s)) {
+    const cw = visualWidth(ch)
+    if (w + cw > max - 1) break
+    out += ch
+    w += cw
+  }
+  return out + '…'
+}
+
+// EXT 摘要段（US-004 OPTIM-017）：表格 TITLE 后的扩展字段速览。
+// 数组 → key×N（计数不展开内容）；标量 → key=value；对象 → key={…}；键序按字母稳定。
+// 无扩展字段返回空串（整列不出现摘要段）；截断上限 60 与 renderTable 的 maxCol 对齐
+export function extSummary(n) {
+  const ext = n.extensions ?? {}
+  const keys = Object.keys(ext).sort()
+  if (!keys.length) return ''
+  const parts = keys.map((k) => {
+    const v = ext[k]
+    if (Array.isArray(v)) return `${k}×${v.length}`
+    if (v !== null && typeof v === 'object') return `${k}={…}`
+    return `${k}=${String(v)}`
+  })
+  return truncateVisual(parts.join(' '), 60)
+}
+
 export function nodeRow(packet, n, { withPath = false } = {}) {
-  const row = [shortId(n.id), n.node_type, n.status, 'v' + n.version, n.title]
+  const row = [shortId(n.id), n.node_type, n.status, 'v' + n.version, n.title, extSummary(n)]
   if (withPath) row.push(packet.pathOf(n.id))
   return row
 }
 
 export function printNodeTable(packet, nodes, { withPath = false } = {}) {
-  const headers = ['ID', 'TYPE', 'STATUS', 'VER', 'TITLE']
+  const headers = ['ID', 'TYPE', 'STATUS', 'VER', 'TITLE', 'EXT']
   if (withPath) headers.push('PATH')
   const lines = renderTable(headers, nodes.map((n) => nodeRow(packet, n, { withPath })))
   console.log(lines.join('\n'))
