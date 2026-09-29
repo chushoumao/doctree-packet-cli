@@ -18,3 +18,6 @@ tmp/
 # agent 侧技能与锁文件（非项目产物）
 .agents/skills/herdr/
 skills-lock.json
+
+# codegraph 索引缓存（非项目产物）
+.codegraph/
