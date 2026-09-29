@@ -51,8 +51,8 @@ dtp pack / dtp unpack        # 快照打包与还原
 
 ```bash
 dtp lint --packet .dtp/需求管理.dtp                     # 前置门：0 error 才能开
-dtp template bind .dtp/templates/user-stories.schema.json --packet .dtp/需求管理.dtp --enforce
-dtp template bind .dtp/templates/user-stories.schema.json --packet .dtp/需求管理.dtp --no-enforce   # 急修通道
+dtp settings template bind .dtp/templates/user-stories.schema.json --packet .dtp/需求管理.dtp --enforce
+dtp settings template bind .dtp/templates/user-stories.schema.json --packet .dtp/需求管理.dtp --no-enforce   # 急修通道
 ```
 
 - 拒绝时返回 `SCHEMA_VIOLATION`（exit 1）+ error.violations 逐条 {rule,message,hint}，包文件字节零变化
@@ -69,7 +69,8 @@ dtp web --open    # http://127.0.0.1:4761；有 .dtp/config.json 的项目零参
 ## 集成与约定
 
 - `.dtp/` 提交 git（数据包即项目文档资产）；`.dtp/*.bak.*` 自动轮换备份，加入 .gitignore
-- 模版自定义：`dtp template new` 生成骨架 → `dtp template check` 自检 → `dtp template bind --enforce` 开启强制
+- 模版自定义：`dtp settings template new` 生成骨架 → `dtp settings template check` 自检 → `dtp settings template bind --enforce` 开启强制（旧 `dtp template *` 为弃用别名，行为等价）
+- agent 速查链路：进入具体包前先 `dtp skill`（契约/引用/用法/逐规则规约/通用坑五节，`--section` 单节取用；绑定 schema 的规约动态生成）
 - 多 Agent 协作（故事包/回归包/登记闭环）：见包内 docs/playbook-story-collab.md
 - 模版 DSL 与规则全集：包内 docs/templates/README.md
 

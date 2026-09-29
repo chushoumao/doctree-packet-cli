@@ -106,23 +106,26 @@ dtp web
 | `dtp verify` | 校验哈希 / 父子引用 / 索引一致性 / 版本单调性等 9 项 |
 | `dtp recover` | 列出或恢复备份（`--from n`） |
 | `dtp web` | 启动可视化控制台（webui）：树浏览 / 查询 / 统计 / 校验 / 模版管理 / 编辑，与 CLI 共享引擎与文件锁。`--port` `--host` `--dir` `--open` |
-| `dtp template new\|check\|bind` | 模版管理：`new` 生成 schema 骨架、`check` 自检（正则可编译 / 引用存在 / 无环）、`bind` 绑定到包（先自检，无效 schema 拒写；`--enforce`/`--no-enforce` 开关写路径强制校验，开启前有 lint 前置门，不给 flag 保持现值） |
+| `dtp settings template new\|check\|bind` | 模版管理（配置态收归）：`new` 生成 schema 骨架、`check` 自检（正则可编译 / 引用存在 / 无环）、`bind` 绑定到包（先自检，无效 schema 拒写；`--enforce`/`--no-enforce` 开关写路径强制校验，开启前有 lint 前置门，不给 flag 保持现值） |
+| `dtp settings show` | 配置态聚合（只读）：绑定 schema 名/version/sha、enforce 态、容器清单、逐规则规约（含「为什么」注释）；schema 丢失降级、sha 漂移警告 |
+| `dtp skill` | agent 使用态规约速查：契约/引用三写法/用法速查/逐规则规约（绑定 schema 动态生成）/通用坑，五节；`--section <name>` 单节取用，`--json` 单行 |
+| `dtp template *` | （弃用别名 → `dtp settings template *`：stderr 弃用提示，本版本行为完全等价） |
 | `dtp lint` | 按绑定的模版 schema 校验包符合性（骨架 / 字段 / 引用 / 编号，只读）。零参数按包内绑定发现，`--schema <path>` 临时指定 |
 
 **全局选项**（可放在任意位置）：`--packet <path>`（默认 `./packet.dtp`）、`--json`、`--pretty`、`--quiet`、`--user <name>`（默认取环境变量 `DTP_USER`）、`--help`、`-v`/`-V`/`--version`（三者等价）。
 
 ### 数据包模版（schema）
 
-数据包格式约定的**单一事实源**是声明式 schema。工作流：`dtp template new` 生成骨架 → 编辑成自己的约定 → `dtp template check` 自检 → `dtp init --template` 派生建包（或 `dtp template bind` 绑定已有包）→ `dtp lint` 符合性校验。DSL 与 lint 规则完整说明见 **[docs/templates/README.md](docs/templates/README.md)**（权威文档，此处不展开）。
+数据包格式约定的**单一事实源**是声明式 schema。工作流：`dtp settings template new` 生成骨架 → 编辑成自己的约定 → `dtp settings template check` 自检 → `dtp init --template` 派生建包（或 `dtp settings template bind` 绑定已有包）→ `dtp lint` 符合性校验。DSL 与 lint 规则完整说明见 **[docs/templates/README.md](docs/templates/README.md)**（权威文档，此处不展开）。
 
 ### 写路径强制校验（enforce）
 
 绑定模版的包可**开启编辑时校验**：违规的 `add`/`update` 被即时拒绝（`SCHEMA_VIOLATION`，error 对象带 `violations` 数组逐条 rule/message/hint），无需事后 lint 补救。
 
 ```bash
-dtp template bind tier.schema.json --enforce      # 开启（包内需先无 error 级违规，否则拒绝）
-dtp template bind tier.schema.json --no-enforce   # 显式关闭
-dtp template bind tier.schema.json                # 都不给 → 保持现值（re-bind 不会静默改变开关）
+dtp settings template bind tier.schema.json --enforce      # 开启（包内需先无 error 级违规，否则拒绝）
+dtp settings template bind tier.schema.json --no-enforce   # 显式关闭
+dtp settings template bind tier.schema.json                # 都不给 → 保持现值（re-bind 不会静默改变开关）
 ```
 
 - 开关状态：`bind` 与 `lint` 输出均可见（`template.enforce`）。
@@ -210,7 +213,7 @@ dtp/
 │   ├── query.js          # 组合过滤引擎
 │   ├── export.js         # Markdown / HTML 导出
 │   ├── output.js         # 输出通道（--json/--quiet/--pretty）、终端表格与颜色
-│   └── commands/         # 20 个子命令（每命令一文件）
+│   └── commands/         # 22 个子命令（每命令一文件）
 └── test/                 # node:test 单元 + CLI 端到端 + 性能
 ```
 

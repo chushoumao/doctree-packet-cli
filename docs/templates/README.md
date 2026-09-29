@@ -15,14 +15,15 @@
 
 ```bash
 # 1) 生成模版骨架（最小可跑示例 + comment 注释），编辑成自己的约定
-dtp template new weekly
-dtp template check weekly.schema.json        # 自检：正则可编译/引用存在/无环
+dtp settings template new weekly
+dtp settings template check weekly.schema.json   # 自检：正则可编译/引用存在/无环
+# （旧 dtp template new|check|bind 仍可用：弃用别名，行为等价，后续版本可能移除）
 
 # 2) 从模版建包（容器骨架自动建立，无示例业务节点，metadata.template 自动绑定）
 dtp init "周报包" --packet weekly.dtp --template weekly.schema.json
 
 # 3) 已有包绑定模版（先自检，无效 schema 拒写；升级 schema 后 re-bind 刷新记录）
-dtp template bind weekly.schema.json --packet weekly.dtp
+dtp settings template bind weekly.schema.json --packet weekly.dtp
 
 # 4) 符合性校验（只读；CI 或收尾自检）
 dtp lint --packet weekly.dtp                 # 零参数按包内绑定发现
@@ -74,9 +75,9 @@ dtp lint --packet weekly.dtp --schema ./x.json   # 临时指定 schema
 
 | 命令 | 语义 |
 |------|------|
-| `dtp template bind <schema> --enforce` | 开启；**前置门**：包当前对该 schema 存在 error 级违规则拒绝（先 `dtp lint` 修数据） |
-| `dtp template bind <schema> --no-enforce` | 显式关闭 |
-| `dtp template bind <schema>`（不给 flag） | **保持现值**（首绑则不写该字段，元数据最小） |
+| `dtp settings template bind <schema> --enforce` | 开启；**前置门**：包当前对该 schema 存在 error 级违规则拒绝（先 `dtp lint` 修数据） |
+| `dtp settings template bind <schema> --no-enforce` | 显式关闭 |
+| `dtp settings template bind <schema>`（不给 flag） | **保持现值**（首绑则不写该字段，元数据最小） |
 
 行为：
 
@@ -95,4 +96,4 @@ dtp lint --packet weekly.dtp --schema ./x.json   # 临时指定 schema
 
 ## 与旧模版的对应关系
 
-旧 `.template.dtp` 的目录骨架 = schema 的 `skeleton`；旧散文约定（ISSUE/OPTIM/FIX、US/TASK 的编号、必填 ext、状态策略）= schema 的 `rules`。升级 schema 后记得 `dtp template bind` re-bind 并提交 schema 文件（包内 metadata 记录相对路径 + sha256）。
+旧 `.template.dtp` 的目录骨架 = schema 的 `skeleton`；旧散文约定（ISSUE/OPTIM/FIX、US/TASK 的编号、必填 ext、状态策略）= schema 的 `rules`。升级 schema 后记得 `dtp settings template bind` re-bind 并提交 schema 文件（包内 metadata 记录相对路径 + sha256）。
