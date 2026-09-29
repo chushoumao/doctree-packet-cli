@@ -16,6 +16,8 @@ import { command as unpack } from './unpack.js'
 import { command as verify } from './verify.js'
 import { command as recover } from './recover.js'
 import { command as template } from './template.js'
+import { command as settings } from './settings.js'
+import { command as skill } from './skill.js'
 import { command as lint } from './lint.js'
 import { command as web } from './web.js'
 
@@ -39,6 +41,8 @@ export const registry = {
   [verify.name]: verify,
   [recover.name]: recover,
   [template.name]: template,
+  [settings.name]: settings,
+  [skill.name]: skill,
   [lint.name]: lint,
   [web.name]: web,
 }
