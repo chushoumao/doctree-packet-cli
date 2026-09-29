@@ -89,7 +89,8 @@ export function parseArgv(argv, registry) {
         continue
       }
       if (name === 'help' || name === 'h') return { helpFor: command ? command.name : null, globals }
-      if (name === 'version' || name === 'V') {
+      // -v 为 -V/--version 的等价别名（短选项对称：-h 已有；OPTIM-025）
+      if (name === 'version' || name === 'V' || name === 'v') {
         versionFlag = true
         continue
       }

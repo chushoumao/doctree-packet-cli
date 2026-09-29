@@ -213,3 +213,19 @@ test('recover 从备份恢复', () => {
   const gp = runJson(['get', 'a1', '--packet', packetFile])
   assert.equal(gp.status, 0) // 删除前的状态被恢复
 })
+
+test('版本短选项 -v 与 -V/--version 等价（OPTIM-025）', () => {
+  const expect = JSON.parse(runDtp(['--version', '--json']).stdout).version
+  assert.match(expect, /^v\d+\.\d+\.\d+$/)
+  for (const flag of ['-v', '-V', '--version']) {
+    const json = runDtp([flag, '--json'])
+    assert.equal(json.status, 0, `${flag} 应 exit 0，实际 ${json.status}: ${json.stderr}`)
+    assert.deepEqual(JSON.parse(json.stdout), { ok: true, version: expect }, `${flag} --json 应与 --version 一致`)
+    const human = runDtp([flag])
+    assert.equal(human.status, 0, `${flag} 人类模式应 exit 0`)
+    assert.equal(human.stdout.trim(), `dtp ${expect}`, `${flag} 人类输出应与 --version 一致`)
+  }
+  // 回归锚点：修复前 -v 报「未知选项 -v」USAGE exit 2
+  const out = JSON.parse(runDtp(['-v', '--json']).stdout)
+  assert.notEqual(out.error?.code, 'USAGE', '-v 不应再被判为未知选项')
+})
