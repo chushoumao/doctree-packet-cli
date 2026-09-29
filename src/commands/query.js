@@ -9,7 +9,7 @@ export const command = {
   summary: '多维度组合过滤查询',
   args: [],
   options: {
-    tag: { arg: 'tag', multi: true, desc: '标签（同维度多个为“或”，逗号分隔或多次传入）' },
+    tag: { arg: 'tag', multi: true, desc: '标签精确匹配、大小写敏感（同维度多个为“或”，逗号分隔或多次传入）' },
     type: { arg: 'type', multi: true, desc: '节点类型，可多个' },
     status: { arg: 'status', multi: true, desc: '状态，可多个' },
     ext: { arg: 'k=v', multi: true, desc: '扩展字段精确匹配（跨字段为“与”）' },
