@@ -11,3 +11,6 @@ tmp/
 # 系统与编辑器
 .DS_Store
 *.log
+
+# pi/fabric agent 运行时状态（非项目产物）
+.pi/
