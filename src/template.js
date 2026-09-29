@@ -730,3 +730,61 @@ export function skeletonLines(schema, { name, packetId, version = 'v1.0.0', root
   lines.push(meta)
   return { lines, meta, root: base.root }
 }
+
+// ---------- 第五段：describeSchema（US-006：skill 动态层与 settings show 人类渲染共享投影） ----------
+
+// schema → 逐规则规约文本。过 checkSchema 门（坏 schema SCHEMA_INVALID，与 evaluate 同语义）；
+// 展示顺序按 compileRules 的拓扑序（scope.parent 指向上游规则时先父后子）；
+// 摘要用原始 pattern 字符串，不做正则预编译（预编译是求值的事，描述只负责如实转述）。
+// compileRules 的 WeakMap 缓存按 schema 对象键控——同对象重复 describe 零编译成本，
+// 且不改变任何输出（缓存透明性由 skill-edges 测试守护）。
+export function describeSchema(schema) {
+  const problems = checkSchema(schema)
+  if (problems.length > 0) {
+    throw new DtpError('SCHEMA_INVALID', `schema 未通过自检（${problems.length} 处问题），先运行 dtp template check 修复`)
+  }
+  const { ordered } = compileRules(schema)
+  return {
+    name: schema.name,
+    version: schema.version,
+    containers: schema.skeleton.map((c) => ({
+      id: c.id,
+      title: c.title,
+      type: c.type ?? 'folder',
+      description: c.description ?? '',
+    })),
+    rules: ordered.map((r) => ({ id: r.id, comment: r.comment ?? null, lines: ruleSpecLines(r) })),
+  }
+}
+
+// 单规则规约文本行：约束键全覆盖，缺省键不产生行；行文本即面向 agent 的使用说明。
+// match 语义取自 evaluate 的 isClaimed（id/title 任一命中即认领，OR 不是 AND）。
+function ruleSpecLines(r) {
+  const lines = []
+  const m = []
+  if (r.match?.id) m.push(`节点 id 命中 ${r.match.id}`)
+  if (r.match?.title) m.push(`标题命中 ${r.match.title}`)
+  lines.push(`位置：挂在 ${r.scope.parent} 之下`)
+  lines.push(m.length ? `认领：${m.join('，或 ')}` : '认领：无 match 条件（不会认领任何节点）')
+  if (r.id_pattern) lines.push(`id 须匹配：${r.id_pattern}`)
+  if (r.title_pattern) lines.push(`title 须匹配：${r.title_pattern.trimEnd()}`)
+  if (r.ext_required?.length) lines.push(`必填扩展：${r.ext_required.join('、')}`)
+  if (r.ext_arrays?.length) lines.push(`扩展值须为 JSON 数组：${r.ext_arrays.join('、')}`)
+  if (r.tags_require?.length) lines.push(`必填标签：${r.tags_require.join('、')}（精确匹配、大小写敏感）`)
+  if (r.content_sections?.length) {
+    lines.push(`正文段落（须含精确字面）：${r.content_sections.map((s) => `「${s}」`).join(' ')}`)
+  }
+  if (r.ref_exists?.length) {
+    lines.push(`引用核查：扩展 ${r.ref_exists.join('、')} 须指向存活节点（标题编号如 US-001，或节点 id）`)
+  }
+  for (const [status, keys] of Object.entries(r.status_evidence ?? {})) {
+    lines.push(`状态门：置 ${status} 前须回填扩展 ${keys.join('、')}`)
+  }
+  if (r.numbering) {
+    const n = r.numbering
+    lines.push(
+      `编号：id 形如 ${n.id_prefix}<N>、title 形如 ${n.title_prefix}-<N>（${n.digits} 位补零约定）；编号空洞与 id/title 编号不一致为 warn 级告警`
+    )
+  }
+  return lines
+}
