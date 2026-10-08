@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { tmpdir, runDtp } from './helpers.js'
+import { checkSchema } from '../src/template.js'
 
 const j = (args, opts) => JSON.parse(runDtp([...args, '--json'], opts).stdout || 'null')
 
@@ -244,4 +245,73 @@ test('lint：rm 中间编号（tombstone）不误报跳号', () => {
   assert.equal(r.ok, true)
   assert.equal(r.warn_count, 0, '已删除编号计入历史池，不产生空洞 warn')
   assert.deepEqual(r.violations, [])
+})
+
+// ---------- OPTIM-030：scope.exclusive 独占认领（warn 级 opt-in） ----------
+
+const EX_SCHEMA = {
+  name: 'ex',
+  version: '1.0.0',
+  skeleton: [{ id: 'f_box', title: '盒子', type: 'folder' }],
+  rules: [{ id: 'item', scope: { parent: 'f_box', exclusive: true }, match: { id: '^it\\d{3}$' } }],
+}
+
+test('OPTIM-030：独占容器下无主节点 → lint warn（不阻断）；认领后归零', () => {
+  const dir = tmpdir('ex30-')
+  const pkt = path.join(dir, 'ex.dtp')
+  fs.writeFileSync(path.join(dir, 'ex.schema.json'), JSON.stringify(EX_SCHEMA, null, 2))
+  j(['init', '独占包', '--packet', pkt, '--template', 'ex.schema.json'], { cwd: dir })
+  const add = (args) => j(['add', ...args, '--packet', pkt], { cwd: dir })
+  const lint = () => j(['lint', '--packet', pkt], { cwd: dir })
+
+  add(['f_box', '--id', 'free1', '--title', '无主节点'])
+  const r = lint()
+  assert.equal(r.ok, true, 'warn 不阻断，exit 语义照旧')
+  assert.equal(r.error_count, 0)
+  assert.equal(r.warn_count, 1)
+  const v = r.violations.find((x) => x.rule === 'scope.exclusive')
+  assert.equal(v.severity, 'warn')
+  assert.equal(v.node_id, 'free1')
+  assert.match(v.message, /未被任何规则认领/)
+  assert.ok(v.hint, 'HINTS 随 violation 附带')
+
+  // 认领节点加入后，free1 仍无主 → warn 持续（warn 按无主节点计，不随他人认领消失）
+  add(['f_box', '--id', 'it001', '--title', '认领项'])
+  assert.equal(lint().warn_count, 1)
+  // rm 掉无主节点 → 归零
+  j(['rm', 'free1', '--yes', '--packet', pkt], { cwd: dir })
+  const r2 = lint()
+  assert.equal(r2.warn_count, 0)
+  assert.deepEqual(r2.violations, [])
+})
+
+test('OPTIM-030：非独占容器零变化（同类无主节点无 warn）；checkSchema 仅接受 true', () => {
+  // 对照组：SCHEMA 无 exclusive 键，f_stories 下无主节点照旧放行
+  const s = setup('ex30ctl-')
+  s.add(['f_stories', '--id', 'free9', '--title', '无主但放行'])
+  assert.equal(s.lint().warn_count, 0)
+
+  // checkSchema：exclusive 仅接受 true（缺省即非独占，false/字符串无意义）
+  for (const bad of [false, 'yes', 1]) {
+    const schema = {
+      name: 'x', version: '1',
+      skeleton: [{ id: 'f_a', title: 'A', type: 'folder' }],
+      rules: [{ id: 'r', scope: { parent: 'f_a', exclusive: bad }, match: { id: '^a$' } }],
+    }
+    const problems = checkSchema(schema)
+    assert.ok(problems.some((p) => p.includes('scope.exclusive 仅接受 true')), `exclusive=${JSON.stringify(bad)} 应被拒`)
+  }
+  assert.deepEqual(checkSchema({ ...EX_SCHEMA }), [])
+})
+
+test('OPTIM-030：enforce 写路径——无主候选 warn 随 schema_warnings 透传（写入不被阻断）', () => {
+  const dir = tmpdir('ex30w-')
+  const pkt = path.join(dir, 'ex.dtp')
+  fs.writeFileSync(path.join(dir, 'ex.schema.json'), JSON.stringify(EX_SCHEMA, null, 2))
+  j(['init', '独占写包', '--packet', pkt, '--template', 'ex.schema.json'], { cwd: dir })
+  j(['settings', 'template', 'bind', 'ex.schema.json', '--packet', pkt, '--enforce'], { cwd: dir })
+  const r = j(['add', 'f_box', '--id', 'free1', '--title', '无主但可写', '--packet', pkt], { cwd: dir })
+  assert.equal(r.ok, true, 'warn 不拦截写入')
+  assert.ok(Array.isArray(r.schema_warnings), 'schema_warnings 透传')
+  assert.ok(r.schema_warnings.some((w) => w.rule === 'scope.exclusive'))
 })

@@ -40,7 +40,7 @@ dtp lint --packet weekly.dtp --schema ./x.json   # 临时指定 schema
   "rules": [
     {
       "id": "item", "comment": "规则注释",
-      "scope":  { "parent": "f_items" },          // 容器 id 或规则 id（后者=挂在该规则认领的节点下）
+      "scope":  { "parent": "f_items", "exclusive": true },   // 容器 id 或规则 id（后者=挂在该规则认领的节点下）；exclusive opt-in：容器下不留无主节点
       "match":  { "id": "^item\\d{3}$", "title": "^ITEM-\\d{3}" },  // 认领谓词（id/title 任一命中，含挂错父检测）
       "id_pattern": "^item\\d{3}$", "title_pattern": "^ITEM-\\d{3} ",
       "ext_required": ["owner"], "ext_arrays": ["acceptance"],
@@ -53,14 +53,14 @@ dtp lint --packet weekly.dtp --schema ./x.json   # 临时指定 schema
 ```
 
 - `comment` 键：顶层 / skeleton 条目 / 规则处合法，人类可读，求值忽略。
-- 未被任何规则认领的节点 v1 放行（不做 closed 容器）；ext 类型只判 string 存在性与 array 数组性。
+- 未被任何规则认领的节点默认放行（非封闭容器哲学）；需要封闭语义的容器在规则上声明 `"scope": { "parent": "f_items", "exclusive": true }`（opt-in，仅接受 true）——无主节点报 **warn 级** `scope.exclusive`（lint 可见、写路径随 `schema_warnings` 透传，不阻断）；不声明则行为零变化。
 - `ref_exists`：ext 值与存活节点 id 或标题编号段（首个分隔符前 token）**全等**，不做模糊匹配。
 - `content_sections`：段落标题**精确匹配**（`content.includes('【需求拆分】')`）——括注/修饰须写进段内正文；变体标题（`【需求拆分（草案）】`）不命中，这是刻意设计（段标题即契约本体，前缀匹配会放过「【需求拆分说明】」这类近似标题）。
 - 编号连续性（warn 级）基于历史出现过的编号（含已删除节点，rm 不制造跳号噪音）。
 
 ## lint 规则命名空间（rule id）
 
-`skeleton.missing` / `parent.container` / `id.pattern` / `title.pattern` / `ext.required` / `ext.arrays` / `tags.require` / `content.sections` / `ref_exists` / `status.evidence` / `id.continuity`(warn) / `packet.structure`；lint 层另有 `schema.drift`（版本演进 warn）与 `regex.runtime`（防御性兜底）。
+`skeleton.missing` / `parent.container` / `id.pattern` / `title.pattern` / `ext.required` / `ext.arrays` / `tags.require` / `content.sections` / `ref_exists` / `status.evidence` / `id.continuity`(warn) / `scope.exclusive`(warn，OPTIM-030 独占认领) / `packet.structure`；lint 层另有 `schema.drift`（版本演进 warn）与 `regex.runtime`（防御性兜底）。
 
 ## lint 三态与漂移语义
 

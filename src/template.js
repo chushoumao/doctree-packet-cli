@@ -37,7 +37,7 @@ const RULE_KEYS = new Set([
   'status_evidence',
   'numbering',
 ])
-const SCOPE_KEYS = new Set(['parent'])
+const SCOPE_KEYS = new Set(['parent', 'exclusive'])
 const MATCH_KEYS = new Set(['id', 'title'])
 const NUMBERING_KEYS = new Set(['title_prefix', 'id_prefix', 'digits'])
 
@@ -54,6 +54,7 @@ export const RULE_IDS = [
   'ref_exists',
   'status.evidence',
   'id.continuity',
+  'scope.exclusive',
   'packet.structure',
 ]
 
@@ -170,6 +171,10 @@ export function checkSchema(input) {
         }
         req(problems, `${where}（${r.id}）`, 'scope.parent 必须是非空字符串', r.scope.parent, isNonEmptyString(r.scope.parent))
         if (r.scope.parent === r.id) problems.push(`${where}（${r.id}）scope.parent 不能引用自身`)
+        // 独占认领（OPTIM-030，opt-in）：仅接受 true——缺省即非独占，写 false 无意义故拦下
+        if (r.scope.exclusive !== undefined && r.scope.exclusive !== true) {
+          problems.push(`${where}（${r.id}）scope.exclusive 仅接受 true（缺省即非独占）`)
+        }
       }
 
       // match：认领谓词，id/title 至少一个（缺失则规则永不生效）
@@ -295,6 +300,7 @@ const HINTS = {
   ref_exists: '引用值须为存活节点的编号（如 US-001）或节点 id（dtp query 可查）',
   'status.evidence': '置 approved 前需 --ext 回填佐证字段（如 done_evidence）',
   'id.continuity': '编号空洞若属历史遗留可确认放行；新登记请顺延当前最大编号',
+  'scope.exclusive': '给该节点补上匹配规则的 id/title，或去掉规则的 scope.exclusive（独占声明意味着容器内不留无主节点）',
 }
 
 // 包对模版符合性校验：纯函数、只读 packet，返回 violations[]
@@ -528,6 +534,21 @@ export function evaluate(schema, packet) {
     }
   }
 
+  // 独占认领（OPTIM-030，opt-in）：声明 exclusive 的规则其 scope.parent 下不允许无主节点——
+  // 未被任何规则认领的子节点报 warn（起步 warn 不 error，不阻断；非 opt-in 容器零变化，
+  // 非封闭容器哲学保留）。多条独占规则覆盖同一容器时按节点去重
+  const allClaimed = new Set()
+  for (const set of claimedBy.values()) for (const id of set) allClaimed.add(id)
+  const exclusiveSeen = new Set()
+  for (const r of ordered) {
+    if (r.scope.exclusive !== true) continue
+    for (const node of packet.childrenOf(r.scope.parent)) {
+      if (allClaimed.has(node.id) || exclusiveSeen.has(node.id)) continue
+      exclusiveSeen.add(node.id)
+      push('scope.exclusive', 'warn', `节点 ${node.id}「${node.title}」位于独占容器 ${r.scope.parent} 下但未被任何规则认领（规则 ${r.id}）`, node.id)
+    }
+  }
+
   return violations
 }
 
@@ -659,6 +680,15 @@ export function evaluateNode(schema, candidate, packet) {
       }
     }
   }
+  // 独占认领（OPTIM-030）：候选挂在声明 exclusive 的容器下却未被任何规则认领 → warn
+  // （不阻断写入，随 schema_warnings 透传；候选自身不在 packet，认领判定直接跑 match）
+  if (!rules.some((r) => isClaimed(r, candidate))) {
+    for (const r of ordered) {
+      if (r.scope.exclusive !== true || candidate.parent_id !== r.scope.parent) continue
+      push('scope.exclusive', 'warn', `节点 ${candidate.id}「${candidate.title}」位于独占容器 ${r.scope.parent} 下但未被任何规则认领（规则 ${r.id}）`, candidate.id)
+      break
+    }
+  }
   return violations
 }
 
@@ -762,12 +792,14 @@ export function describeSchema(schema) {
 function ruleSpecLines(r) {
   const lines = []
   const m = []
-  if (r.match?.id) m.push(`节点 id 命中 ${r.match.id}`)
-  if (r.match?.title) m.push(`标题命中 ${r.match.title}`)
+  // ISSUE-033：pattern 字面即契约——原样输出（不 trimEnd）并用引号包裹，尾随空格这类
+  // 语义字符在渲染层不可见性是真实歧义源（如 ^ITEM-\d{3}  的尾空格）
+  if (r.match?.id) m.push(`节点 id 命中 "${r.match.id}"`)
+  if (r.match?.title) m.push(`标题命中 "${r.match.title}"`)
   lines.push(`位置：挂在 ${r.scope.parent} 之下`)
   lines.push(m.length ? `认领：${m.join('，或 ')}` : '认领：无 match 条件（不会认领任何节点）')
-  if (r.id_pattern) lines.push(`id 须匹配：${r.id_pattern}`)
-  if (r.title_pattern) lines.push(`title 须匹配：${r.title_pattern.trimEnd()}`)
+  if (r.id_pattern) lines.push(`id 须匹配："${r.id_pattern}"`)
+  if (r.title_pattern) lines.push(`title 须匹配："${r.title_pattern}"`)
   if (r.ext_required?.length) lines.push(`必填扩展：${r.ext_required.join('、')}`)
   if (r.ext_arrays?.length) lines.push(`扩展值须为 JSON 数组：${r.ext_arrays.join('、')}`)
   if (r.tags_require?.length) lines.push(`必填标签：${r.tags_require.join('、')}（精确匹配、大小写敏感）`)
