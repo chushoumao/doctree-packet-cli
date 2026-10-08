@@ -229,3 +229,21 @@ test('版本短选项 -v 与 -V/--version 等价（OPTIM-025）', () => {
   const out = JSON.parse(runDtp(['-v', '--json']).stdout)
   assert.notEqual(out.error?.code, 'USAGE', '-v 不应再被判为未知选项')
 })
+
+test('ISSUE-032：版本旗标仅在无子命令时短路——子命令后按 USAGE exit 2，init 自有选项不受影响', () => {
+  // 子命令后旗标：属该命令选项域 → USAGE exit 2（三形态一致）
+  for (const flag of ['--version', '-v', '-V']) {
+    const r = runJson(['query', flag])
+    assert.equal(r.status, 2, `query ${flag} 应 exit 2`)
+    assert.equal(r.data.error.code, 'USAGE')
+    assert.match(r.data.error.message, /未知选项/)
+  }
+  // 红线：命令自有同名选项优先链不动（init --version <ver> 照常）
+  const own = runJson(['init', '版本自有', '--packet', path.join(dir, 'own.dtp'), '--id', 'n_root', '--version', '2.0.0'])
+  assert.equal(own.status, 0, `init --version 应 exit 0：${JSON.stringify(own.data)}`)
+  assert.equal(own.data.version, '2.0.0')
+  // 红线：--help 行为不变（根与命令级）
+  assert.equal(runDtp(['--help']).status, 0)
+  assert.equal(runDtp(['query', '--help']).status, 0)
+  assert.match(runDtp(['--help']).stdout, /命令:/)
+})

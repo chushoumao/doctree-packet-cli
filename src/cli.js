@@ -89,10 +89,18 @@ export function parseArgv(argv, registry) {
         continue
       }
       if (name === 'help' || name === 'h') return { helpFor: command ? command.name : null, globals }
-      // -v 为 -V/--version 的等价别名（短选项对称：-h 已有；OPTIM-025）
+      // -v 为 -V/--version 的等价别名（短选项对称：-h 已有；OPTIM-025）。
+      // ISSUE-032：仅在未出现子命令时短路为版本查询——子命令出现后该旗标属命令选项域，
+      // 落到下方未知选项 USAGE（不 continue 即可）；findCommandOption 优先链已保证
+      // init --version <ver> 这类命令自有同名选项先于本分支命中，不受影响
       if (name === 'version' || name === 'V' || name === 'v') {
-        versionFlag = true
-        continue
+        if (!command) {
+          versionFlag = true
+          continue
+        }
+        // ISSUE-032：子命令出现后版本旗标属命令选项域 → USAGE（version 也在 GLOBAL_OPTIONS，
+        // 不能 fall-through 否则被静默吞掉）；在 defer 的 try 内抛出，后续 --json 等仍会被收集
+        throw new DtpError('USAGE', `未知选项 ${tok}（查看 dtp ${command.name} --help）`)
       }
 
       const def = isLong ? GLOBAL_OPTIONS[name] : null
