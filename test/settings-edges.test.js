@@ -73,7 +73,8 @@ const MATRIX = [
   { name: 'new 非法名 USAGE', args: ['template', 'new', 'bad name'] },
   { name: 'check 成功', args: ['template', 'check', 'weekly.schema.json'], setup: (d) => fs.writeFileSync(path.join(d, 'weekly.schema.json'), MIN_SCHEMA) },
   { name: 'check 缺 target USAGE', args: ['template', 'check'] },
-  { name: 'check 文件缺失 USAGE', args: ['template', 'check', 'nope.json'] },
+  // 「check 文件缺失」自 OPTIM-031 起报错含 cwd 解析绝对路径，天然随 tmp 目录名变化，
+  // 不再适合逐字节矩阵（两入口行为一致性由下方 OPTIM-031 专项测试覆盖）
   { name: 'bind 成功', args: ['template', 'bind', 'weekly.schema.json', '--packet', 'p.dtp'], setup: (d) => { setupPacket(d); fs.writeFileSync(path.join(d, 'weekly.schema.json'), MIN_SCHEMA) } },
   { name: 'bind 缺 target USAGE', args: ['template', 'bind', '--packet', 'p.dtp'], setup: (d) => setupPacket(d) },
   { name: 'bind 坏 schema SCHEMA_INVALID', args: ['template', 'bind', 'bad.schema.json', '--packet', 'p.dtp'], setup: (d) => { setupPacket(d); fs.writeFileSync(path.join(d, 'bad.schema.json'), BAD_SCHEMA) } },
@@ -252,4 +253,38 @@ test('包缺失：settings show 显式 --packet 指向不存在文件 → NO_PAC
   const d = j(['settings', 'show', '--packet', 'nope.dtp'], { cwd: dir })
   assert.equal(d.ok, false)
   assert.equal(d.error.code, 'NO_PACKET')
+})
+
+// ---------- OPTIM-031：schema 路径报告口径（相对包目录 + 绝对路径） ----------
+
+test('OPTIM-031：settings show --json schema.abs 绝对且可达（跨 cwd 调用一致）；丢失态给期望位置', () => {
+  const dir = tmpdir('p31-')
+  setupPacket(dir)
+  fs.writeFileSync(path.join(dir, 'weekly.schema.json'), MIN_SCHEMA)
+  j(['settings', 'template', 'bind', 'weekly.schema.json', '--packet', 'p.dtp'], { cwd: dir })
+  const d = j(['settings', 'show', '--packet', 'p.dtp'], { cwd: dir })
+  assert.ok(path.isAbsolute(d.schema.abs))
+  assert.equal(d.schema.abs, fs.realpathSync(path.join(dir, 'weekly.schema.json')))
+  // 跨 cwd 调用照旧可达（abs 相对包文件目录解析，与调用方 cwd 无关）
+  const d2 = j(['settings', 'show', '--packet', path.join(dir, 'p.dtp')], { cwd: tmpdir('p31cwd-') })
+  assert.equal(d2.schema.abs, d.schema.abs)
+
+  fs.unlinkSync(path.join(dir, 'weekly.schema.json'))
+  const lost = j(['settings', 'show', '--packet', 'p.dtp'], { cwd: dir })
+  assert.equal(lost.schema.found, false)
+  assert.ok(path.isAbsolute(lost.schema.abs))
+  assert.match(runDtp(['settings', 'show', '--packet', 'p.dtp'], { cwd: dir }).stdout, /期望位置：/)
+})
+
+test('OPTIM-031：check 缺文件报错附 cwd 解析绝对路径；init --template 响应带 abs（不落盘）', () => {
+  const dir = tmpdir('p31b-')
+  const d = j(['settings', 'template', 'check', 'nope.json'], { cwd: dir })
+  assert.equal(d.error.code, 'USAGE')
+  assert.ok(d.error.message.includes(path.join(dir, 'nope.json')), '报错含 cwd 解析后的绝对路径')
+
+  fs.writeFileSync(path.join(dir, 'w.schema.json'), MIN_SCHEMA)
+  const r = j(['init', '路径包', '--packet', path.join(dir, 'p.dtp'), '--template', 'w.schema.json'], { cwd: dir })
+  assert.equal(r.template.abs, fs.realpathSync(path.join(dir, 'w.schema.json')))
+  // abs 是响应派生字段，不进 append-only metadata（与 bind 记录形状一致）
+  assert.ok(!('abs' in JSON.parse(fs.readFileSync(path.join(dir, 'p.dtp'), 'utf8').split('\n').find((l) => l.includes('packet_meta')) ?? '{}')))
 })

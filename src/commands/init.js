@@ -6,7 +6,7 @@ import { DtpError } from '../errors.js'
 import { initPacketLines } from '../packet.js'
 import { withLock, backupPacketFile, writeJsonlFresh } from '../storage.js'
 import { parseExtAssignments, validateNodeId, validateTitle } from '../model/node.js'
-import { parseSchema, checkSchema, skeletonLines, relativeSchemaFile } from '../template.js'
+import { parseSchema, checkSchema, skeletonLines, relativeSchemaFile, resolveSchemaFile } from '../template.js'
 import { ensureDefault, configPathOf } from '../config.js'
 import { shortId, color } from '../output.js'
 
@@ -79,7 +79,8 @@ export const command = {
           throw new DtpError('INTERNAL', `内置模版缺失：${schemaFile}（安装包不完整，请重装 doctree-packet-cli）`)
         }
       } else if (!fs.existsSync(schemaFile)) {
-        throw new DtpError('USAGE', `schema 文件不存在：${schemaFile}（先用 dtp template new <name> 生成；内置模版：${[...BUILTIN_TEMPLATES.keys()].join(' | ')}）`)
+        // OPTIM-031：附 cwd 解析后的绝对路径，跨目录调用可直接核对实际指向
+        throw new DtpError('USAGE', `schema 文件不存在：${schemaFile}（cwd 解析：${path.resolve(schemaFile)}；先用 dtp settings template new <name> 生成；内置模版：${[...BUILTIN_TEMPLATES.keys()].join(' | ')}）`)
       }
       const text = fs.readFileSync(schemaFile, 'utf8')
       const problems = checkSchema(text)
@@ -160,6 +161,8 @@ export const command = {
       const cfg = ensureDefault(process.cwd(), path.basename(file))
       configInfo = { file: configPathOf(process.cwd()), default: cfg.default, written: cfg.written }
     }
+    // OPTIM-031：abs 是响应派生字段（照抄即可 bind/check，不受调用方 cwd 影响），不进 append-only metadata
+    const templateAbs = templateMeta ? resolveSchemaFile(file, templateMeta.file) : null
     ctx.out.ok(
       {
         packet_id: meta.packet_id,
@@ -168,7 +171,7 @@ export const command = {
         root_node_id: root.id,
         file,
         nodes: schema ? 1 + schema.skeleton.length : 1,
-        ...(templateMeta ? { template: templateMeta } : {}),
+        ...(templateMeta ? { template: { ...templateMeta, abs: templateAbs } } : {}),
         ...(configInfo ? { config: configInfo } : {}),
       },
       () => {
@@ -182,6 +185,7 @@ export const command = {
         }
         if (schema) {
           console.log(`模版派生：${templateMeta.name} v${templateMeta.version} · ${schema.skeleton.length} 个容器（无示例业务节点）`)
+          console.log(color.dim(`schema：${templateMeta.file}（绝对路径 ${templateAbs}；re-bind：dtp settings template bind）`))
         }
         console.log(`根节点: ${shortId(root.id)}「${root.title}」`)
       }

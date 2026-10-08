@@ -3,6 +3,7 @@
 // 旧 dtp template 降级为转发壳（commands/template.js）指向本 dispatch——单一实现路径保证
 // 两入口 stdout 逐字节等价，弃用提示只进 stderr。topic=template 的报错文案与旧实现逐字一致。
 import fs from 'node:fs'
+import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { DtpError } from '../errors.js'
 import { parseSchema, checkSchema, describeSchema, relativeSchemaFile, resolveSchemaFile } from '../template.js'
@@ -53,7 +54,8 @@ function assertTemplateName(name) {
 
 function readSchemaFile(file, { action }) {
   if (!fs.existsSync(file)) {
-    throw new DtpError('USAGE', `schema 文件不存在：${file}（先用 dtp template new <name> 生成）`)
+    // OPTIM-031：附 cwd 解析后的绝对路径——跨目录调用时用户可直接核对实际指向
+    throw new DtpError('USAGE', `schema 文件不存在：${file}（cwd 解析：${path.resolve(file)}；先用 dtp template new <name> 生成）`)
   }
   const buf = fs.readFileSync(file)
   return { buf, text: buf.toString('utf8'), sha256: createHash('sha256').update(buf).digest('hex'), file, action }
@@ -191,13 +193,14 @@ function runShow(ctx) {
   if (t?.file) {
     const abs = resolveSchemaFile(ctx.packetPath, t.file)
     if (!fs.existsSync(abs)) {
-      schema = { found: false, file: t.file }
+      // OPTIM-031：abs 为相对包文件目录解析出的绝对路径——照抄即可 bind/check，不受 cwd 影响
+      schema = { found: false, file: t.file, abs }
     } else {
       const buf = fs.readFileSync(abs)
       const sha256 = createHash('sha256').update(buf).digest('hex')
       const drift = t.schema_sha256 ? sha256 !== t.schema_sha256 : true
       const problems = checkSchema(buf.toString('utf8'))
-      schema = { found: true, file: t.file, sha256, drift, problems }
+      schema = { found: true, file: t.file, abs, sha256, drift, problems }
     }
   }
   // 容器清单与逐规则摘要仅当 schema 在案且自检通过。人类渲染收编 describeSchema 共享实现
@@ -230,7 +233,7 @@ function runShow(ctx) {
     console.log(`绑定模版：${t.name} v${t.version}`)
     console.log(enforceText)
     if (!schema.found) {
-      console.log(`${color.yellow('⚠')} schema 文件丢失：${t.file}（绑定 sha 仍在案：${t.schema_sha256?.slice(0, 12)}…）`)
+      console.log(`${color.yellow('⚠')} schema 文件丢失：${t.file}（期望位置：${schema.abs}；绑定 sha 仍在案：${t.schema_sha256?.slice(0, 12)}…）`)
       return
     }
     if (schema.drift) {
@@ -238,7 +241,7 @@ function runShow(ctx) {
         `${color.yellow('⚠')} schema 与绑定 sha 不一致（漂移）：绑定 ${t.schema_sha256?.slice(0, 12)}… / 当前 ${schema.sha256.slice(0, 12)}…（重新 dtp settings template bind 可更新绑定）`
       )
     } else {
-      console.log(`schema：${t.file}（${color.green('✓')} 与绑定一致 · sha256 ${schema.sha256.slice(0, 12)}…）`)
+      console.log(`schema：${t.file}（${color.green('✓')} 与绑定一致 · sha256 ${schema.sha256.slice(0, 12)}… · 绝对路径 ${schema.abs}）`)
     }
     console.log(`容器：${payload.skeleton.length} 个`)
     for (const c of payload.skeleton) console.log(`  ${c.id}  ${c.type ?? 'folder'}  ${c.title}`)

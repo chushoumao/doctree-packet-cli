@@ -66,7 +66,11 @@ test('init --template：容器 id/type/title 与 schema 一致、无示例业务
     assert.equal(node.description, c.description ?? '')
     assert.deepEqual(node.tags, c.tags ?? [])
   }
-  assert.deepEqual(packet.meta.metadata.template, r.template)
+  // OPTIM-031：响应 template = 持久化记录 + 派生 abs（abs 是响应字段，不落盘）
+  assert.equal(packet.meta.metadata.template.file, r.template.file)
+  assert.equal(packet.meta.metadata.template.schema_sha256, r.template.schema_sha256)
+  assert.equal(packet.meta.metadata.template.abs, undefined)
+  assert.ok(path.isAbsolute(r.template.abs))
 
   // verify 全绿
   assert.equal(runDtp(['verify', '--packet', pkt], { cwd: dir }).status, 0)
