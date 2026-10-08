@@ -49,9 +49,10 @@ test('describeSchema：逐字段投影（name/version/containers/rules + 规约�
   assert.equal(r.comment, '示例规则的最小可跑骨架')
   // 规约行逐键断言（约束键全覆盖、文案含 pattern 原文）
   assert.ok(r.lines.some((l) => l.includes('位置：挂在 f_items 之下')), '位置行')
-  assert.ok(r.lines.some((l) => l.includes('认领：节点 id 命中 ^item\\d{3}$') && l.includes('或') && l.includes('标题命中 ^ITEM-\\d{3}')), '认领行（match 为 OR）')
-  assert.ok(r.lines.some((l) => l === 'id 须匹配：^item\\d{3}$'), 'id 行用原始 pattern')
-  assert.ok(r.lines.some((l) => l.startsWith('title 须匹配：')), 'title 行')
+  // ISSUE-033：pattern 字面即契约——引号包裹，尾随空格这类语义字符不 trimEnd 原样保留
+  assert.ok(r.lines.some((l) => l.includes('认领：节点 id 命中 "^item\\d{3}$"') && l.includes('或') && l.includes('标题命中 "^ITEM-\\d{3}"')), '认领行（match 为 OR，pattern 引号包裹）')
+  assert.ok(r.lines.some((l) => l === 'id 须匹配："^item\\d{3}$"'), 'id 行用原始 pattern')
+  assert.ok(r.lines.some((l) => l === 'title 须匹配："^ITEM-\\d{3} "'), 'title 行尾随空格原样保留（不 trimEnd）')
   assert.ok(r.lines.some((l) => l.includes('必填扩展：owner')), 'ext_required 行')
   assert.ok(r.lines.some((l) => l.includes('扩展值须为 JSON 数组：acceptance')), 'ext_arrays 行')
   assert.ok(r.lines.some((l) => l.includes('必填标签：item（精确匹配、大小写敏感）')), 'tags 行（OPTIM-005 语义）')

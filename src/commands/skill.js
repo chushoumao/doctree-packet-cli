@@ -56,7 +56,7 @@ function renderBoundRules(packetPath, template) {
   }
   const abs = resolveSchemaFile(packetPath, template.file)
   if (!fs.existsSync(abs)) {
-    return `⚠ 绑定的 schema 文件丢失：${template.file}（绑定 sha 仍在案）。查看绑定详情：dtp settings show --packet ${packetPath}；恢复文件或重新绑定后重试`
+    return `⚠ 绑定的 schema 文件丢失：${template.file}（期望位置：${abs}；绑定 sha 仍在案）。查看绑定详情：dtp settings show --packet ${packetPath}；恢复文件或重新绑定后重试`
   }
   let schema
   try {
