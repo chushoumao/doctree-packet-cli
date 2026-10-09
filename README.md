@@ -98,7 +98,7 @@ dtp web
 | `dtp query` | 组合过滤：`--tag`（精确匹配、大小写敏感） `--type` `--status` `--ext k=v` `--keyword`（标题+描述+正文+标签） `--path` `--limit` |
 | `dtp get <node>` | 显示节点完整信息 |
 | `dtp get-path <path>` | 通过语义路径获取节点 |
-| `dtp history <node>` | 版本演进与变更历史（已删除节点亦可查看） |
+| `dtp history <node>` | 版本演进与变更历史（已删除节点亦可查看）。`--json` 每版本附 `fields`（预渲染字符串）与 `changes`（`[{field,old,new}]` 结构化字段变更，供程序消费；生命周期标记 old/new 为 null）
 | `dtp checkout <node> <version>` | 回滚到指定版本（以新增变更实现，不抹除历史） |
 | `dtp export [node]` | 导出子树，`--format md\|html`，`--output` 写文件 |
 | `dtp pack` | 打包快照（各节点最新版本 + 完整 changelog），`--gzip` 压缩 |
@@ -112,7 +112,7 @@ dtp web
 | `dtp template *` | （弃用别名 → `dtp settings template *`：stderr 弃用提示，本版本行为完全等价） |
 | `dtp lint` | 按绑定的模版 schema 校验包符合性（骨架 / 字段 / 引用 / 编号，只读）。零参数按包内绑定发现，`--schema <path>` 临时指定 |
 
-**全局选项**（可放在任意位置）：`--packet <path>`（默认 `./packet.dtp`）、`--json`、`--pretty`、`--quiet`、`--user <name>`（默认取环境变量 `DTP_USER`）、`--help`、`-v`/`-V`/`--version`（三者等价）。
+**全局选项**（可放在任意位置）：`--packet <path>`（默认 `./packet.dtp`）、`--json`、`--pretty`、`--quiet`、`--user <name>`（默认取环境变量 `DTP_USER`）、`--help`/`-h`、`-v`/`-V`/`--version`（三者等价，仅首令牌形态生效——子命令后按未知选项处理，见 ISSUE-032）。
 
 ### 数据包模版（schema）
 
