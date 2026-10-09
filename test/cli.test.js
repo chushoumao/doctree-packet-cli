@@ -247,3 +247,52 @@ test('ISSUE-032：版本旗标仅在无子命令时短路——子命令后按 U
   assert.equal(runDtp(['query', '--help']).status, 0)
   assert.match(runDtp(['--help']).stdout, /命令:/)
 })
+
+test('OPTIM-026：根 help 呈现全局短选项（-h / -v,-V）；-h ≡ --help；子命令后 -v 仍 USAGE', () => {
+  const root = runDtp(['--help']).stdout
+  // 短选项呈现与命令级 `-x, --name` 对称（复用 optionFlags）
+  assert.match(root, /-h, --help/, '根 help 含 -h')
+  assert.match(root, /-v, -V, --version/, '根 help 含 -v/-V')
+  // 红线：文案不得暗示子命令后可用
+  assert.match(root, /仅首令牌形态生效/, 'version 文案点明首令牌形态')
+
+  // -h ≡ --help（根与命令级双形态一致）
+  assert.equal(runDtp(['-h']).stdout, runDtp(['--help']).stdout)
+  assert.equal(runDtp(['query', '-h']).stdout, runDtp(['query', '--help']).stdout)
+  assert.match(runDtp(['query', '-h']).stdout, /-h, --help/, '命令级 help 同样呈现 -h')
+
+  // ISSUE-032 共存：子命令后 -v 仍是 USAGE exit 2
+  const after = runJson(['query', '-v'])
+  assert.equal(after.status, 2)
+  assert.equal(after.data.error.code, 'USAGE')
+})
+
+test('OPTIM-008：history --json 新增 changes[] 结构化变更；fields 预渲染字符串原样保留', () => {
+  const init = runJson(['init', '历史包', '--packet', packetFile, '--id', 'n_root'])
+  assert.equal(init.status, 0)
+  runJson(['add', 'n_root', '--id', 'fr001', '--title', 'FR-001 初版', '--type', 'requirement', '--packet', packetFile])
+  runJson(['update', 'fr001', '--title', 'FR-001 二版', '--packet', packetFile])
+  runJson(['update', 'fr001', '--ext', 'priority=P0', '--packet', packetFile])
+
+  const h = runJson(['history', 'fr001', '--packet', packetFile])
+  assert.equal(h.status, 0)
+  assert.equal(h.data.total_versions, 3)
+
+  const byVer = new Map(h.data.versions.map((v) => [v.version, v]))
+  // fields：预渲染字符串（只增不减——形状与语义不变）
+  const v2 = byVer.get(2)
+  assert.ok(Array.isArray(v2.fields))
+  assert.ok(v2.fields.every((f) => typeof f === 'string'))
+  assert.equal(v2.fields[0], 'title: FR-001 初版 → FR-001 二版')
+
+  // changes：结构化字段变更
+  assert.deepEqual(v2.changes, [{ field: 'title', old: 'FR-001 初版', new: 'FR-001 二版' }])
+  assert.deepEqual(byVer.get(3).changes, [{ field: 'extensions.priority', old: null, new: 'P0' }])
+  // 生命周期标记无字段差值 → old/new 为 null，但 field 名保留
+  assert.deepEqual(byVer.get(1).changes, [{ field: '*created', old: null, new: null }])
+
+  // 人类输出维持可读（逐行沿用 fields）
+  const human = runDtp(['history', 'fr001', '--packet', packetFile]).stdout
+  assert.match(human, /title: FR-001 初版 → FR-001 二版/)
+  assert.match(human, /extensions\.priority: ∅ → P0/)
+})

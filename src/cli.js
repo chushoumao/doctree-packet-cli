@@ -9,8 +9,9 @@ export const GLOBAL_OPTIONS = {
   pretty: { desc: '格式化 JSON 输出' },
   quiet: { desc: '静默模式：成功时不产生输出' },
   user: { arg: 'name', desc: '操作人，记录到 changelog（默认取环境变量 DTP_USER）' },
-  help: { desc: '显示帮助' },
-  version: { desc: '显示版本号' },
+  help: { short: 'h', desc: '显示帮助（-h 同义）' },
+  // 文案点明「首令牌形态」：ISSUE-032 起子命令后的 -v 属未知选项（USAGE），帮助不得暗示可用
+  version: { short: ['v', 'V'], desc: '显示版本号（-v/-V/--version，仅首令牌形态生效；子命令后按未知选项处理）' },
 }
 
 function defaults() {
@@ -184,7 +185,9 @@ export function parseArgv(argv, registry) {
 // ---------- 帮助渲染 ----------
 
 function optionFlags(name, def) {
-  const short = def.short ? `-${def.short}, ` : '    '
+  // OPTIM-026：短选项可为多个（如 -v/-V），与命令级 `-x, --name` 呈现对称
+  const shorts = [].concat(def.short ?? []).filter(Boolean)
+  const short = shorts.length ? `${shorts.map((s) => `-${s}`).join(', ')}, ` : '    '
   const val = def.arg ? ` <${def.arg}>` : ''
   return `${short}--${name}${val}`
 }
@@ -210,7 +213,8 @@ export function renderCommandHelp(cmd) {
     if (k === 'help' || k === 'version') continue
     rows.push([`    --${k}${v.arg ? ` <${v.arg}>` : ''}`, v.desc])
   }
-  rows.push(['    --help', '显示本帮助'])
+  // 短选项呈现对称（OPTIM-026）；命令级帮助不列 --version——ISSUE-032 起子命令后即为未知选项
+  rows.push([optionFlags('help', GLOBAL_OPTIONS.help), GLOBAL_OPTIONS.help.desc])
   const w = Math.max(...rows.map((r) => r[0].length))
   for (const [k, v] of rows) parts.push(`  ${k.padEnd(w + 2)}${v}`)
   if (cmd.example) {
@@ -238,10 +242,7 @@ export function renderRootHelp(registry, version) {
   for (const c of cmds) parts.push(`  ${c.name.padEnd(w + 2)}${c.summary ?? ''}`)
   parts.push('')
   parts.push('全局选项:')
-  const rows = Object.entries(GLOBAL_OPTIONS).map(([k, v]) => [
-    `    --${k}${v.arg ? ` <${v.arg}>` : ''}`,
-    v.desc,
-  ])
+  const rows = Object.entries(GLOBAL_OPTIONS).map(([k, v]) => [optionFlags(k, v), v.desc])
   const w2 = Math.max(...rows.map((r) => r[0].length))
   for (const [k, v] of rows) parts.push(`  ${k.padEnd(w2 + 2)}${v}`)
   parts.push('')
