@@ -228,3 +228,35 @@ test('真实包人类输出：skill 五节全量在两真实包上 exit 0（冒�
     assert.ok(r.stdout.includes('━━━ rules ━━━'))
   }
 })
+
+// ---------- OPTIM-029：rules.<ruleId> 点寻址（节名稳定性契约不变） ----------
+
+test('OPTIM-029：--section rules.<ruleId> 命中单规则；--json 沿用 {ok,packet,section,content}', () => {
+  const d = j(['skill', '--json', '--section', 'rules.issue', '--packet', REGRESSION_PACKET], { cwd: tmpdir('pt1-') })
+  assert.equal(d.ok, true)
+  assert.deepEqual(Object.keys(d).sort(), ['content', 'ok', 'packet', 'section'])
+  assert.equal(d.section, 'rules.issue')
+  assert.match(d.content, /^【issue】/, '单规则块自规则标题起')
+  assert.ok(!d.content.includes('【optim】'), '不夹带其他规则')
+  assert.match(d.content, /必填扩展：severity、area/)
+  // 与整节 rules 的对应块一致（点寻址是全量节的子集，非另一份渲染）
+  const full = j(['skill', '--json', '--section', 'rules', '--packet', REGRESSION_PACKET], { cwd: tmpdir('pt1b-') })
+  assert.ok(full.content.includes(d.content), '点寻址块是 rules 整节的子串')
+})
+
+test('OPTIM-029：未知规则 id → USAGE exit 2 附可用 id 列表；空 id 与无包场景各自可行动', () => {
+  const dir = tmpdir('pt2-')
+  const bad = j(['skill', '--section', 'rules.nope', '--packet', REGRESSION_PACKET], { cwd: dir })
+  assert.equal(bad.error.code, 'USAGE')
+  assert.match(bad.error.message, /可用：issue \| optim \| fix/)
+  assert.equal(runDtp(['skill', '--section', 'rules.nope', '--packet', REGRESSION_PACKET], { cwd: dir }).status, 2)
+
+  const empty = j(['skill', '--section', 'rules.', '--packet', REGRESSION_PACKET], { cwd: dir })
+  assert.equal(empty.error.code, 'USAGE')
+  assert.match(empty.error.message, /rules\.<ruleId>/)
+
+  // 无包（降级）下点寻址：明确「无可寻址规则 + 建包/绑定指引」，USAGE exit 2
+  const degraded = j(['skill', '--section', 'rules.issue'], { cwd: tmpdir('pt3-') })
+  assert.equal(degraded.error.code, 'USAGE')
+  assert.match(degraded.error.message, /无可寻址规则/)
+})

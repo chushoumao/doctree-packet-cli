@@ -50,35 +50,39 @@ const STATIC = {
 
 // 动态层：包绑定 schema 的逐规则规约。任何配置态问题（无绑/文件丢失/坏 schema）都转为
 // rules 节内的警示 + 修复指引——skill 是速查工具，不该因配置态缺陷崩掉整个输出
-function renderBoundRules(packetPath, template) {
+// OPTIM-029：同时返回 blocks（规则 id → 单规则规约块）供 --section rules.<ruleId> 点寻址
+function buildRulesSection(packetPath, template) {
+  const bare = (text) => ({ text, blocks: new Map() })
   if (!template) {
-    return '包未绑定模版 schema。绑定后此处显示逐规则规约：dtp settings template bind <schema> --packet <包>'
+    return bare('包未绑定模版 schema。绑定后此处显示逐规则规约：dtp settings template bind <schema> --packet <包>')
   }
   const abs = resolveSchemaFile(packetPath, template.file)
   if (!fs.existsSync(abs)) {
-    return `⚠ 绑定的 schema 文件丢失：${template.file}（期望位置：${abs}；绑定 sha 仍在案）。查看绑定详情：dtp settings show --packet ${packetPath}；恢复文件或重新绑定后重试`
+    return bare(`⚠ 绑定的 schema 文件丢失：${template.file}（期望位置：${abs}；绑定 sha 仍在案）。查看绑定详情：dtp settings show --packet ${packetPath}；恢复文件或重新绑定后重试`)
   }
   let schema
   try {
     schema = parseSchema(fs.readFileSync(abs, 'utf8'))
   } catch (e) {
-    return `⚠ 绑定的 schema 不是合法 JSON：${template.file}（${e.message}）。修复后重试：dtp template check ${template.file}`
+    return bare(`⚠ 绑定的 schema 不是合法 JSON：${template.file}（${e.message}）。修复后重试：dtp settings template check ${template.file}`)
   }
   let d
   try {
     d = describeSchema(schema)
   } catch (e) {
-    return `⚠ 绑定的 schema 未通过自检：${e.message}`
+    return bare(`⚠ 绑定的 schema 未通过自检：${e.message}`)
+  }
+  const blockOf = (r) => {
+    const why = r.comment ? `\n  为什么：${r.comment}` : ''
+    return `【${r.id}】${why}\n${r.lines.map((l) => `  · ${l}`).join('\n')}`
   }
   const head = `${d.name} v${d.version} 逐规则规约（${d.rules.length} 条，按依赖拓扑序；「为什么」为 schema 作者注释）：`
   const containers = d.containers.map((c) => `  容器 ${c.id}「${c.title}」[${c.type}]`).join('\n')
-  const blocks = d.rules
-    .map((r) => {
-      const why = r.comment ? `\n  为什么：${r.comment}` : ''
-      return `\n【${r.id}】${why}\n${r.lines.map((l) => `  · ${l}`).join('\n')}`
-    })
-    .join('\n')
-  return [head, containers, blocks].join('\n')
+  const blocksText = d.rules.map((r) => `\n${blockOf(r)}`).join('\n')
+  return {
+    text: [head, containers, blocksText].join('\n'),
+    blocks: new Map(d.rules.map((r) => [r.id, blockOf(r)])),
+  }
 }
 
 export const command = {
@@ -86,17 +90,23 @@ export const command = {
   summary: 'agent 使用态规约速查：契约/引用/用法速查/逐规则规约（绑定 schema 动态生成）/通用坑',
   args: [],
   options: {
-    section: { arg: 'name', desc: `只取一节（${SECTIONS.join(' | ')}）；缺省输出全部五节` },
+    section: { arg: 'name', desc: `只取一节（${SECTIONS.join(' | ')}，或 rules.<ruleId> 单规则点寻址）；缺省输出全部五节` },
   },
   example: [
     'dtp skill                          # 全部五节（含当前包绑定 schema 的逐规则规约）',
     'dtp skill --section rules --packet ./周报包.dtp',
+    'dtp skill --section rules.issue --packet ./回归包.dtp   # 单规则点寻址',
     'dtp skill --json --section contract',
   ],
   run(ctx) {
     const section = ctx.opts.section
-    if (section !== undefined && !SECTIONS.includes(section)) {
-      throw new DtpError('USAGE', `未知 section "${section}"（可用：${SECTIONS.join(' | ')}）`)
+    // OPTIM-029：rules.<ruleId> 点寻址——节名稳定性契约不变（顶层仍五节白名单）
+    const point = section?.startsWith('rules.') ? section.slice('rules.'.length) : null
+    if (section !== undefined && point === null && !SECTIONS.includes(section)) {
+      throw new DtpError('USAGE', `未知 section "${section}"（可用：${SECTIONS.join(' | ')}，或 rules.<ruleId> 单规则点寻址）`)
+    }
+    if (point !== null && !point) {
+      throw new DtpError('USAGE', '点寻址需给出规则 id：--section rules.<ruleId>（全部规约：dtp skill --section rules）')
     }
     // 降级三态：显式 --packet 缺失严格报错（调用方明确点名了一个包）；缺省解析缺包优雅降级
     const exists = fs.existsSync(ctx.packetPath)
@@ -104,26 +114,41 @@ export const command = {
       throw new DtpError('USAGE', `数据包不存在：${ctx.packetPath}（显式 --packet 指向的路径须存在；省略 --packet 走默认解析链）`)
     }
     let packetPath = null
-    let rulesText
+    let rulesSection
     if (exists) {
       packetPath = ctx.packetPath
       const packet = ctx.load()
-      rulesText = renderBoundRules(ctx.packetPath, packet.meta.metadata?.template ?? null)
+      rulesSection = buildRulesSection(ctx.packetPath, packet.meta.metadata?.template ?? null)
     } else {
-      rulesText =
-        '未指定数据包（当前目录无默认包）。建包后此处显示逐规则规约：dtp init <名> 建包 → dtp settings template bind <schema> --packet <包> 绑定'
+      rulesSection = {
+        text: '未指定数据包（当前目录无默认包）。建包后此处显示逐规则规约：dtp init <名> 建包 → dtp settings template bind <schema> --packet <包> 绑定',
+        blocks: new Map(),
+      }
     }
     const sections = {
       contract: STATIC.contract,
       refs: STATIC.refs,
       usage: STATIC.usage,
-      rules: rulesText,
+      rules: rulesSection.text,
       pitfalls: STATIC.pitfalls,
     }
     if (section !== undefined) {
       // 过滤形状：{ok,packet,section,content}——与全量形状不混用（不同时给 sections 键）
-      ctx.out.ok({ packet: packetPath, section, content: sections[section] }, () => {
-        console.log(sections[section])
+      let content = sections[section]
+      if (point !== null) {
+        if (!rulesSection.blocks.size) {
+          throw new DtpError('USAGE', `--section rules.${point} 需要可解析的绑定 schema；当前无可寻址规则（${rulesSection.text}）`)
+        }
+        if (!rulesSection.blocks.has(point)) {
+          throw new DtpError(
+            'USAGE',
+            `未知规则 id "${point}"（可用：${[...rulesSection.blocks.keys()].join(' | ')}；全部规约：dtp skill --section rules）`
+          )
+        }
+        content = rulesSection.blocks.get(point)
+      }
+      ctx.out.ok({ packet: packetPath, section, content }, () => {
+        console.log(content)
       })
       return
     }
