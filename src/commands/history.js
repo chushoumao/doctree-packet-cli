@@ -61,6 +61,18 @@ function formatEntry(e, resolveValues) {
   }
 }
 
+// OPTIM-008：changes[] 供程序消费的结构化字段变更——fields（预渲染字符串）原样保留只增不减。
+// 生命周期标记（*created/*deleted/*checkout）没有字段差值，old/new 为 null；
+// *moved 的差值是路径（old_path/new_path），不是哈希——此处按自身单位给出，不混单位。
+function changeOf(e, resolveValues) {
+  if (e.field === '*moved') {
+    return { field: e.field, old: e.old_path ?? null, new: e.new_path ?? null }
+  }
+  const vals = resolveValues ? resolveValues(e) : null
+  if (!vals) return { field: e.field, old: null, new: null }
+  return { field: e.field, old: vals.old ?? null, new: vals.new ?? null }
+}
+
 export const command = {
   name: 'history',
   summary: '显示节点的变更历史（版本演进）',
@@ -85,6 +97,7 @@ export const command = {
       hash: v.hash,
       title: v.title,
       fields: related(v).map((e) => formatEntry(e, resolveValues)),
+      changes: related(v).map((e) => changeOf(e, resolveValues)),
       users: [...new Set(related(v).map((e) => e.user).filter(Boolean))],
     }))
     timeline.reverse() // 最新在前
