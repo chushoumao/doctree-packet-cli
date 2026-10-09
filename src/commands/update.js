@@ -1,5 +1,5 @@
 import { parseExtAssignments, normalizeTags } from '../model/node.js'
-import { hashWarnFields, schemaWarnFields } from './_shared.js'
+import { hashWarnFields, schemaWarnFields, resolveTextArg } from './_shared.js'
 import { shortId, color, publicNode } from '../output.js'
 
 export const command = {
@@ -8,8 +8,8 @@ export const command = {
   args: [{ name: 'node', required: true, desc: '节点 ID（唯一前缀）或 /语义路径' }],
   options: {
     title: { arg: 'text', desc: '新标题' },
-    description: { arg: 'text', desc: '新描述' },
-    content: { arg: 'text', desc: '新正文' },
+    description: { arg: 'text', desc: '新描述（支持 @文件路径 读文件注入；@@ 开头表示字面量）' },
+    content: { arg: 'text', desc: '新正文（支持 @文件路径 读文件注入；@@ 开头表示字面量）' },
     status: { arg: 'status', desc: 'draft | review | approved | archived' },
     tags: { arg: 'tags', multi: true, desc: '整体替换全部标签；或 +标签 增量添加 / -标签 增量移除（逗号分隔或多次传入）' },
     ext: { arg: 'k=v', multi: true, desc: '扩展字段（append-only：默认只允许新增键）' },
@@ -17,12 +17,16 @@ export const command = {
   },
   example: [
     'dtp update fr001 --content "新内容..." --ext priority=P0 --ext owner=张三',
+    'dtp update fr001 --content @./spec.md   # @文件注入；字面 @ 开头写 @@…',
     'dtp update fr001 --status approved --tags auth,P0,密码',
   ],
   run(ctx) {
     const patch = {}
     for (const key of ['title', 'description', 'content', 'status']) {
-      if (ctx.opts[key] !== undefined) patch[key] = ctx.opts[key]
+      // description/content 支持 @file 注入（OPTIM-027）；其余字段按字面量
+      if (ctx.opts[key] !== undefined) {
+        patch[key] = key === 'description' || key === 'content' ? resolveTextArg(ctx.opts[key]) : ctx.opts[key]
+      }
     }
     if (ctx.opts.tags !== undefined) patch.tags = ctx.opts.tags
     const ext = parseExtAssignments(ctx.opts.ext)

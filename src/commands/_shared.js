@@ -4,6 +4,22 @@ import path from 'node:path'
 import { DtpError } from '../errors.js'
 import { renderTable, TYPE_COLOR, STATUS_COLOR, shortId, color, publicNode, visualWidth } from '../output.js'
 
+// ---------- 长文本入参（OPTIM-027） ----------
+
+// --content/--description 的 @file 读取：多行长文本走命令行字面量易错且易被 shell 改写
+// （OPTIM-005 关闭时 v2 坏写的根因）。转义歧义用 `@@` 前缀解决——内容本身以 @ 开头时
+// 写成 `@@…`（取字面量），不需要「关闭开关」这种第二种模式。文件原样注入（含尾随换行）。
+export function resolveTextArg(v) {
+  if (typeof v !== 'string' || !v.startsWith('@')) return v
+  if (v.startsWith('@@')) return v.slice(1)
+  const file = v.slice(1)
+  if (!file) throw new DtpError('USAGE', '长文本入参 @ 后缺路径（读文件用 --content @./file.md；字面 @ 开头请写 @@…）')
+  if (!fs.existsSync(file)) {
+    throw new DtpError('USAGE', `长文读取失败：${file} 不存在（cwd 解析：${path.resolve(file)}）`)
+  }
+  return fs.readFileSync(file, 'utf8')
+}
+
 // ---------- 节点表格 / 详情（ls / query / get 共用） ----------
 
 // 视觉宽度感知截断（CJK 计 2 列）：超 max 截断加 …，保证表格列宽可控

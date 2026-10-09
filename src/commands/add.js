@@ -1,6 +1,6 @@
 import { DtpError } from '../errors.js'
 import { parseExtAssignments } from '../model/node.js'
-import { hashWarnFields, schemaWarnFields } from './_shared.js'
+import { hashWarnFields, schemaWarnFields, resolveTextArg } from './_shared.js'
 import { shortId, color, TYPE_COLOR, STATUS_COLOR, publicNode } from '../output.js'
 
 export const command = {
@@ -10,8 +10,8 @@ export const command = {
   options: {
     title: { arg: 'text', desc: '节点标题（必填）' },
     type: { arg: 'type', default: 'document', desc: 'folder | document | requirement | knowledge | index' },
-    description: { arg: 'text', desc: '描述' },
-    content: { arg: 'text', desc: 'Markdown 正文' },
+    description: { arg: 'text', desc: '描述（支持 @文件路径 读文件注入；@@ 开头表示字面量）' },
+    content: { arg: 'text', desc: 'Markdown 正文（支持 @文件路径 读文件注入；@@ 开头表示字面量）' },
     tags: { arg: 'tags', multi: true, desc: '标签，逗号分隔或多次传入' },
     status: { arg: 'status', default: 'draft', desc: 'draft | review | approved | archived' },
     ext: { arg: 'k=v', multi: true, desc: '扩展字段，值支持 JSON 字面量，可多次传入' },
@@ -20,6 +20,7 @@ export const command = {
   example: [
     'dtp add n_root --title "FR-001 用户认证" --type requirement --tags auth,P0',
     'dtp add fr001 --title "登录验证" --description "支持账号密码及验证码登录"',
+    'dtp add fr001 --title "长文" --content @./spec.md   # @文件注入；字面 @ 开头写 @@…',
   ],
   run(ctx) {
     if (!ctx.opts.title) throw new DtpError('USAGE', 'add 需要 --title <标题>')
@@ -30,8 +31,8 @@ export const command = {
         id: ctx.opts.id,
         nodeType: ctx.opts.type,
         title: ctx.opts.title,
-        description: ctx.opts.description ?? '',
-        content: ctx.opts.content ?? '',
+        description: resolveTextArg(ctx.opts.description) ?? '',
+        content: resolveTextArg(ctx.opts.content) ?? '',
         tags: ctx.opts.tags ?? [],
         status: ctx.opts.status,
         extensions: parseExtAssignments(ctx.opts.ext),
