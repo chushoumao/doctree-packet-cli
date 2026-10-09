@@ -14,7 +14,8 @@
 ## 标准工作流
 
 ```bash
-# 1) 生成模版骨架（最小可跑示例 + comment 注释），编辑成自己的约定
+# 1) 生成模版骨架（示范完整键集：content_sections/ext_required/ext_arrays/status_evidence/ref_exists
+#    各至少一处，comment 逐键说明用途——写真实场景不必回头读本文档），编辑成自己的约定
 dtp settings template new weekly
 dtp settings template check weekly.schema.json   # 自检：正则可编译/引用存在/无环
 # （旧 dtp template new|check|bind 仍可用：弃用别名，行为等价，后续版本可能移除）

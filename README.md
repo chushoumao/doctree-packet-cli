@@ -109,8 +109,8 @@ dtp web
 | `dtp verify` | 校验哈希 / 父子引用 / 索引一致性 / 版本单调性等 9 项 |
 | `dtp recover` | 列出或恢复备份（`--from n`） |
 | `dtp web` | 启动可视化控制台（webui）：树浏览 / 查询 / 统计 / 校验 / 模版管理 / 编辑，与 CLI 共享引擎与文件锁。`--port` `--host` `--dir` `--open` |
-| `dtp settings template new\|check\|bind` | 模版管理（配置态收归）：`new` 生成 schema 骨架、`check` 自检（正则可编译 / 引用存在 / 无环）、`bind` 绑定到包（先自检，无效 schema 拒写；`--enforce`/`--no-enforce` 开关写路径强制校验，开启前有 lint 前置门，不给 flag 保持现值） |
-| `dtp settings show` | 配置态聚合（只读）：绑定 schema 名/version/sha、enforce 态、容器清单、逐规则规约（含「为什么」注释）；schema 态附**绝对路径**（照抄即可 bind/check，不受调用方 cwd 影响）、丢失降级、sha 漂移警告 |
+| `dtp settings template new\|check\|bind\|unbind` | 模版管理（配置态收归）：`new` 生成 schema 骨架（示范完整键集：content_sections/ext_required/ext_arrays/status_evidence/ref_exists 各一处 + 每键用途注释）、`check` 自检（正则可编译 / 引用存在 / 无环）、`bind` 绑定到包（先自检，无效 schema 拒写；再次 bind 即换绑；`--enforce`/`--no-enforce` 开关写路径强制校验，开启前有 lint 前置门，不给 flag 保持现值）、`unbind` 解绑（append-only：新增 packet_meta 行，历史绑定行不改写；enforce 态解绑会一并解除强制，需 `--force` 确认） |
+| `dtp settings show` | 配置态聚合（只读）：绑定 schema 名/version/sha、enforce 态、容器清单、逐规则规约（含「为什么」注释）；schema 态两个路径字段——`file` 为**包相对**契约字段（照抄 bind/check 时按包目录回退解析，跨 cwd 可达）、`abs` 为**绝对路径**（照抄即可，不落盘）；丢失降级、sha 漂移警告 |
 | `dtp skill` | agent 使用态规约速查：契约/引用三写法/用法速查/逐规则规约（绑定 schema 动态生成）/通用坑，五节；`--section <name>` 单节取用（`rules.<ruleId>` 点寻址取单条规则规约，未知 id USAGE 附可用 id 列表），`--json` 单行 |
 | `dtp template *` | （弃用别名 → `dtp settings template *`：stderr 弃用提示，本版本行为完全等价） |
 | `dtp lint` | 按绑定的模版 schema 校验包符合性（骨架 / 字段 / 引用 / 编号，只读）。零参数按包内绑定发现，`--schema <path>` 临时指定 |
@@ -131,7 +131,7 @@ dtp settings template bind tier.schema.json --no-enforce   # 显式关闭
 dtp settings template bind tier.schema.json                # 都不给 → 保持现值（re-bind 不会静默改变开关）
 ```
 
-- 开关状态：`bind` 与 `lint` 输出均可见（`template.enforce`）。
+- 开关状态：`bind` 与 `lint` 输出均可见（`template.enforce`）。开启前置门被拒时，报错附**受影响节点清单**（id/标题，仅含带节点 id 的违规——容器级缺失如 `skeleton.missing` 无节点 id，不进清单但计入违规条数）与逐条 hint，不必另跑 lint 才知道是谁。
 - 分级：仅 **error 级**拦截；warn 级（如编号跳号 `id.continuity`）不阻断，随成功写入以 `schema_warnings` 字段透传（人类模式打印 ⚠ 行）。
 - 逃生路径：**先修数据**（`dtp lint` 看明细）或 `--no-enforce` 临时关闭；不提供按次跳过参数——append-only 下「先写坏再修」会留下永久历史。
 - 正文约定：`content_sections` 是**精确匹配**——段落标题必须规范（`【需求拆分】`），括注/修饰写进段内正文（`【需求拆分（草案）】` 这类变体标题不会被命中）。
