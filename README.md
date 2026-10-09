@@ -52,6 +52,9 @@ dtp add fr001 --title "找回密码"
 # 更新内容（自动版本递增 + changelog）
 dtp update fr001 --content "新内容..." --ext priority=P0 --ext owner=张三 --user 张三
 
+# 长文本走文件注入（@文件路径；字面 @ 开头写 @@…）
+dtp update fr001 --content @./spec.md
+
 # 查询所有 P0 且状态为 approved 的需求
 dtp query --tag P0 --status approved
 
@@ -89,8 +92,8 @@ dtp web
 | 命令 | 说明 |
 |------|------|
 | `dtp init <name>` | 创建新数据包（生成根节点）。`--id` 自定义根 ID，`--version` 包版本，`--meta k=v` 包元数据，`--template <tpl>` 按模版派生骨架包：`user-stories`/`dtp-regression` 释放内置模版到包旁 `templates/`（保留字优先于本地同名文件），或 `<schema 路径>`，`--force` 覆盖 |
-| `dtp add <parent>` | 添加子节点。`--title`（必填）`--type` `--description` `--content` `--tags` `--status` `--ext k=v` `--id` |
-| `dtp update <node>` | 更新字段，自动递增版本并记录 changelog。`--title` `--description` `--content` `--status` `--tags`（整体替换）`--ext`；`--force` 允许覆盖已有扩展键 |
+| `dtp add <parent>` | 添加子节点。`--title`（必填）`--type` `--description` `--content` `--tags` `--status` `--ext k=v` `--id`；`--description`/`--content` 支持 `@文件路径` 读文件注入（`@@` 前缀为字面 `@`，缺文件 USAGE exit 2 附绝对路径） |
+| `dtp update <node>` | 更新字段，自动递增版本并记录 changelog。`--title` `--description` `--content` `--status` `--tags`（整体替换）`--ext`；`--force` 允许覆盖已有扩展键；`--description`/`--content` 同支持 `@文件路径` 注入（`@@` 转义字面 `@`） |
 | `dtp rm <node>` | 删除节点及全部子孙（级联）。交互环境询问确认，脚本中需 `--yes` |
 | `dtp mv <node> <newParent>` | 移动子树，路径索引自动更新（含成环检测） |
 | `dtp ls [path]` | 列出直接子节点，`-r/--recursive` 递归列出子树 |
@@ -107,8 +110,8 @@ dtp web
 | `dtp recover` | 列出或恢复备份（`--from n`） |
 | `dtp web` | 启动可视化控制台（webui）：树浏览 / 查询 / 统计 / 校验 / 模版管理 / 编辑，与 CLI 共享引擎与文件锁。`--port` `--host` `--dir` `--open` |
 | `dtp settings template new\|check\|bind` | 模版管理（配置态收归）：`new` 生成 schema 骨架、`check` 自检（正则可编译 / 引用存在 / 无环）、`bind` 绑定到包（先自检，无效 schema 拒写；`--enforce`/`--no-enforce` 开关写路径强制校验，开启前有 lint 前置门，不给 flag 保持现值） |
-| `dtp settings show` | 配置态聚合（只读）：绑定 schema 名/version/sha、enforce 态、容器清单、逐规则规约（含「为什么」注释）；schema 丢失降级、sha 漂移警告 |
-| `dtp skill` | agent 使用态规约速查：契约/引用三写法/用法速查/逐规则规约（绑定 schema 动态生成）/通用坑，五节；`--section <name>` 单节取用，`--json` 单行 |
+| `dtp settings show` | 配置态聚合（只读）：绑定 schema 名/version/sha、enforce 态、容器清单、逐规则规约（含「为什么」注释）；schema 态附**绝对路径**（照抄即可 bind/check，不受调用方 cwd 影响）、丢失降级、sha 漂移警告 |
+| `dtp skill` | agent 使用态规约速查：契约/引用三写法/用法速查/逐规则规约（绑定 schema 动态生成）/通用坑，五节；`--section <name>` 单节取用（`rules.<ruleId>` 点寻址取单条规则规约，未知 id USAGE 附可用 id 列表），`--json` 单行 |
 | `dtp template *` | （弃用别名 → `dtp settings template *`：stderr 弃用提示，本版本行为完全等价） |
 | `dtp lint` | 按绑定的模版 schema 校验包符合性（骨架 / 字段 / 引用 / 编号，只读）。零参数按包内绑定发现，`--schema <path>` 临时指定 |
 
@@ -133,6 +136,7 @@ dtp settings template bind tier.schema.json                # 都不给 → 保�
 - 逃生路径：**先修数据**（`dtp lint` 看明细）或 `--no-enforce` 临时关闭；不提供按次跳过参数——append-only 下「先写坏再修」会留下永久历史。
 - 正文约定：`content_sections` 是**精确匹配**——段落标题必须规范（`【需求拆分】`），括注/修饰写进段内正文（`【需求拆分（草案）】` 这类变体标题不会被命中）。
 - 需知（产品承诺）：enforce 态下 `add` 必须**一次性带全必填字段**（中途补 ext 会被拦）；`rm` 可能产生指向已删节点的 `ref_exists` 悬挂引用（写路径不拦，lint 事后可见）；`mv`/`checkout` 的写路径校验属后续版本。
+- 独占认领（opt-in）：默认**非封闭容器**——未被任何规则认领的节点不拦截；需要封闭语义时在规则上声明 `"scope": { "parent": "<容器>", "exclusive": true }`，容器下出现无主节点报 **warn 级** `scope.exclusive`（不阻断写入）。非独占容器行为零变化、存量包不受影响；DSL 细节以 **[docs/templates/README.md](docs/templates/README.md)** 为准。
 
 用 dtp 管理需求与回归登记的协作流程（需求侧 / 实现侧 / 回归侧三会话，故事与任务闭环）见 **[docs/playbook-story-collab.md](docs/playbook-story-collab.md)**。
 

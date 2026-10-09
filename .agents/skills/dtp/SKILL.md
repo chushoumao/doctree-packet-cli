@@ -1,16 +1,16 @@
 ---
 name: dtp
-description: "使用 dtp（DocTree Packet CLI）在任意项目中创建、初始化与管理版本化文档数据包。当用户提到 dtp、文档包、数据包、.dtp 目录、dtp init/template/lint/web/enforce、需求管理、故事包、回归包、需求登记，或想把项目文档、需求、登记记录做成带版本台账与校验的数据包时使用本技能——即使用户没直接说出 dtp 这个名字，只要意图是把文档做成带版本与校验的数据包也应使用。"
+description: "使用 dtp（DocTree Packet CLI）在任意项目中创建、初始化与管理版本化文档数据包。当用户提到 dtp、文档包、数据包、.dtp 目录、dtp init/add/update/query/lint/web、dtp settings（配置态：模版 new/check/bind + show 绑定与规则聚合）、dtp skill（agent 规约速查五节）、enforce 写路径强制校验、需求管理、故事包、回归包、需求登记，或想把项目文档、需求、登记记录做成带版本台账与校验的数据包时使用本技能——即使用户没直接说出 dtp 这个名字，只要意图是把文档做成带版本与校验的数据包也应使用。"
 ---
 
-# dtp 使用（DocTree Packet CLI ≥ v1.9）
+# dtp 使用（DocTree Packet CLI ≥ v1.11）
 
 dtp 把项目文档做成树形、append-only、可校验的 JSONL 数据包。数据统一落在项目相对目录 `.dtp/`，CLI 与 webui 共享同一引擎与文件锁。
 
 ## 前置检查
 
 ```bash
-dtp --version        # ≥ v1.9.0；未装则先装（离线 tgz：npm i -g --offline doctree-packet-cli-1.9.0.tgz）
+dtp --version        # ≥ v1.11.0；未装则先装（离线 tgz：npm i -g --offline doctree-packet-cli-1.11.0.tgz）
 ```
 
 Agent 契约：所有命令支持 `--json`（单行 {"ok":true,...}；退出码 2=用法错误、1=业务错误）。脚本与多 Agent 编排一律加 `--json` 并解析 ok 字段。
@@ -38,6 +38,11 @@ dtp ls                       # 直接子节点
 dtp get <节点>               # 详情（含版本/扩展）
 dtp add <父引用> --title "标题" --type requirement --tags a,b --ext k=v --status draft --content "正文"
 dtp update <节点> --title/--description/--content/--status/--tags/--ext   # ext 已有键覆盖需 --force
+# 长文本走文件注入：@文件路径（内容以 @ 开头写 @@…；缺文件 USAGE exit 2 附绝对路径）
+dtp update <节点> --content @./spec.md
+dtp skill [--section contract|refs|usage|rules|pitfalls]   # agent 规约速查
+# 单规则点寻址：--section rules.<ruleId>（未知 id USAGE 附可用 id 列表）
+dtp skill --section rules.issue --packet .dtp/回归登记.dtp
 dtp mv <节点> <新父> / dtp rm <节点> --yes
 dtp query --tag story --type requirement --status draft --ext priority=P1 --keyword 关键词 --parent <引用> --limit 20
 dtp history <节点> / dtp checkout <节点> <版本号>
@@ -70,13 +75,14 @@ dtp web --open    # http://127.0.0.1:4761；有 .dtp/config.json 的项目零参
 
 - `.dtp/` 提交 git（数据包即项目文档资产）；`.dtp/*.bak.*` 自动轮换备份，加入 .gitignore
 - 模版自定义：`dtp settings template new` 生成骨架 → `dtp settings template check` 自检 → `dtp settings template bind --enforce` 开启强制（旧 `dtp template *` 为弃用别名，行为等价）
-- agent 速查链路：进入具体包前先 `dtp skill`（契约/引用/用法/逐规则规约/通用坑五节，`--section` 单节取用；绑定 schema 的规约动态生成）
+- agent 速查链路：进入具体包前先 `dtp skill`（契约/引用/用法/逐规则规约/通用坑五节，`--section` 单节取用；`rules.<ruleId>` 点寻址单条规则规约；绑定 schema 的规约动态生成）
 - 多 Agent 协作（故事包/回归包/登记闭环）：见包内 docs/playbook-story-collab.md
 - 模版 DSL 与规则全集：包内 docs/templates/README.md
 
 ## 常见坑（agent 必读）
 
 - 段标题必须精确匹配（【需求拆分】），括注写段内正文——变体会被 content.sections 拒绝
+- `--content`/`--description` 的 `@` 是文件注入信号：正文以 `@` 开头要写 `@@`（想写两个字面 `@` 就写 `@@@`）
 - 默认包 = 第一个 init 的包；对其他包操作忘记 --packet 是最常见错误
 - enforce 包的违规写入被拒时，先读 violations[].hint，不要盲目 --force/--no-enforce
 - rm 不拦 ref_exists 悬挂（事后 lint 会报）；mv/checkout 未接入写路径校验
