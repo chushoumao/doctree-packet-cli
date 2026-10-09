@@ -7,7 +7,7 @@ export const command = {
   name: 'template',
   summary: '（弃用别名 → dtp settings template）模版管理：new 生成 schema 骨架 / check 自检 / bind 绑定到包',
   args: [
-    { name: 'action', required: true, desc: 'new | check | bind' },
+    { name: 'action', required: true, desc: 'new | check | bind | unbind' },
     { name: 'target', required: false, desc: 'new：模版名；check/bind：schema 文件路径' },
   ],
   options: {

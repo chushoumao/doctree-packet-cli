@@ -24,14 +24,14 @@ export function attachEnforcer(packet) {
     if (!fs.existsSync(schemaPath)) {
       throw new DtpError(
         'TEMPLATE_MISSING',
-        `强制校验：绑定的 schema 文件不存在：${schemaPath}（metadata.template.file=${bound.file}；恢复文件、re-bind，或 dtp template bind --no-enforce 关闭强制）`
+        `强制校验：绑定的 schema 文件不存在：${schemaPath}（metadata.template.file=${bound.file}；恢复文件、re-bind，或 dtp settings template bind --no-enforce 关闭强制）`
       )
     }
     const buf = fs.readFileSync(schemaPath)
     const text = buf.toString('utf8')
     const problems = checkSchema(text)
     if (problems.length) {
-      throw new DtpError('SCHEMA_INVALID', `强制校验：schema 非法（${problems.length} 处）：${problems[0]}（修复后 dtp template check）`)
+      throw new DtpError('SCHEMA_INVALID', `强制校验：schema 非法（${problems.length} 处）：${problems[0]}（修复后 dtp settings template check）`)
     }
     const schema = parseSchema(text)
     const sha = createHash('sha256').update(buf).digest('hex')

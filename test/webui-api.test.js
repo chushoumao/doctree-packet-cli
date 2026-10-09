@@ -169,9 +169,11 @@ test('web：模板 new → check → bind → lint 全链（释放副本对齐 S
 
   const lint = await call('GET', '/api/lint', { params: { p: P } })
   assert.equal(lint.ok, true, JSON.stringify(lint.error))
-  // demo 模版要求 f_items 容器，该包没有 → skeleton.missing 恰好证明 lint 经 API 真在管事
-  assert.equal(lint.error_count, 1)
+  // demo 骨架（OPTIM-033 完整键集版）声明两个容器，该包一个都没有 → skeleton.missing×2
+  // 恰好证明 lint 经 API 真在管事（骨架改版：旧骨架 1 容器 → 1 条）
+  assert.equal(lint.error_count, 2)
   assert.equal(lint.violations[0].rule, 'skeleton.missing')
+  assert.ok(lint.violations.every((v) => v.rule === 'skeleton.missing'))
   assert.ok(fs.existsSync(path.join(WS, 'templates', 'demo.schema.json')), '模板落在工作区 templates/（与 init 释放目录对齐）')
 })
 

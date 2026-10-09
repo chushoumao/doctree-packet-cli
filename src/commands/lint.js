@@ -12,7 +12,7 @@ import { color } from '../output.js'
 // 读取并自检 schema 文件；不可用即快速失败（不进 violations）
 function loadSchemaFile(schemaPath) {
   if (!fs.existsSync(schemaPath)) {
-    throw new DtpError('TEMPLATE_MISSING', `schema 文件不存在：${schemaPath}（先用 dtp template new <name> 生成）`)
+    throw new DtpError('TEMPLATE_MISSING', `schema 文件不存在：${schemaPath}（先用 dtp settings template new <name> 生成）`)
   }
   const buf = fs.readFileSync(schemaPath)
   const text = buf.toString('utf8')
@@ -20,7 +20,7 @@ function loadSchemaFile(schemaPath) {
   if (problems.length) {
     throw new DtpError(
       'SCHEMA_INVALID',
-      `schema 未通过自检（${problems.length} 处）：${problems[0]}${problems.length > 1 ? ' 等' : ''}（修复后 dtp template check ${schemaPath}）`
+      `schema 未通过自检（${problems.length} 处）：${problems[0]}${problems.length > 1 ? ' 等' : ''}（修复后 dtp settings template check ${schemaPath}）`
     )
   }
   return { schema: parseSchema(text), sha256: createHash('sha256').update(buf).digest('hex') }
@@ -52,14 +52,14 @@ export const command = {
       ;({ schema } = loadSchemaFile(ctx.opts.schema))
     } else {
       if (!bound) {
-        throw new DtpError('TEMPLATE_MISSING', `包未绑定模版：${file}（先用 dtp template bind <schema> 绑定，或本次用 --schema 临时指定）`)
+        throw new DtpError('TEMPLATE_MISSING', `包未绑定模版：${file}（先用 dtp settings template bind <schema> 绑定，或本次用 --schema 临时指定）`)
       }
       // 必须走 resolveSchemaFile：按包目录解析 metadata.template.file（两侧 realpath 归一，symlink 安全）
       const schemaPath = resolveSchemaFile(file, bound.file)
       if (!fs.existsSync(schemaPath)) {
         throw new DtpError(
           'TEMPLATE_MISSING',
-          `绑定的 schema 文件不存在：${schemaPath}（metadata.template.file 记录为 ${bound.file}；schema 迁移后请 dtp template bind 重新绑定）`
+          `绑定的 schema 文件不存在：${schemaPath}（metadata.template.file 记录为 ${bound.file}；schema 迁移后请 dtp settings template bind 重新绑定）`
         )
       }
       const loaded = loadSchemaFile(schemaPath)
@@ -69,13 +69,13 @@ export const command = {
         violations.push({
           rule: 'schema.drift',
           severity: 'warn',
-          message: `schema 版本不一致：包绑定 v${bound.version}，当前文件 v${schema.version}（正常演进；确认后 dtp template bind 重新绑定刷新记录）`,
+          message: `schema 版本不一致：包绑定 v${bound.version}，当前文件 v${schema.version}（正常演进；确认后 dtp settings template bind 重新绑定刷新记录）`,
           hint: '升级 schema 属预期行为；re-bind 后此告警消失',
         })
       } else if (bound.schema_sha256 !== loaded.sha256) {
         throw new DtpError(
           'SCHEMA_DRIFT',
-          `schema 版本同为 v${bound.version} 但内容与绑定记录不一致（记录 ${String(bound.schema_sha256).slice(0, 12)}…，实际 ${loaded.sha256.slice(0, 12)}…）。同版本内容应稳定；确认是升级请先 bump schema version 再 dtp template bind 重新绑定`
+          `schema 版本同为 v${bound.version} 但内容与绑定记录不一致（记录 ${String(bound.schema_sha256).slice(0, 12)}…，实际 ${loaded.sha256.slice(0, 12)}…）。同版本内容应稳定；确认是升级请先 bump schema version 再 dtp settings template bind 重新绑定`
         )
       }
     }

@@ -315,7 +315,7 @@ function compileRules(schema) {
   if (cached) return cached
   const problems = checkSchema(schema)
   if (problems.length > 0) {
-    throw new DtpError('SCHEMA_INVALID', `schema 未通过自检（${problems.length} 处问题），先运行 dtp template check 修复`)
+    throw new DtpError('SCHEMA_INVALID', `schema 未通过自检（${problems.length} 处问题），先运行 dtp settings template check 修复`)
   }
   const rules = schema.rules ?? [] // checkSchema 允许省略 rules（仅骨架 schema）
   const byId = new Map(rules.map((r) => [r.id, r]))
@@ -355,7 +355,7 @@ function compileRules(schema) {
 export function evaluate(schema, packet) {
   const problems = checkSchema(schema)
   if (problems.length > 0) {
-    throw new DtpError('SCHEMA_INVALID', `schema 未通过自检（${problems.length} 处问题），先运行 dtp template check 修复`)
+    throw new DtpError('SCHEMA_INVALID', `schema 未通过自检（${problems.length} 处问题），先运行 dtp settings template check 修复`)
   }
 
   // 前置短路：结构破损的包谈业务符合性无意义（rule=packet.structure，hint 先跑 verify）
@@ -771,7 +771,7 @@ export function skeletonLines(schema, { name, packetId, version = 'v1.0.0', root
 export function describeSchema(schema) {
   const problems = checkSchema(schema)
   if (problems.length > 0) {
-    throw new DtpError('SCHEMA_INVALID', `schema 未通过自检（${problems.length} 处问题），先运行 dtp template check 修复`)
+    throw new DtpError('SCHEMA_INVALID', `schema 未通过自检（${problems.length} 处问题），先运行 dtp settings template check 修复`)
   }
   const { ordered } = compileRules(schema)
   return {

@@ -11,15 +11,17 @@ import { assertWritableOutput } from './_shared.js'
 import { command as lintCommand } from './lint.js'
 import { color } from '../output.js'
 
-export const TEMPLATE_ACTIONS = ['new', 'check', 'bind']
+export const TEMPLATE_ACTIONS = ['new', 'check', 'bind', 'unbind']
 export const SETTINGS_TOPICS = ['template', 'show']
 
-// template new 的最小可跑骨架：comment 键即注释（DSL 求值忽略），产物必须通过自身 check
+// template new 的骨架（OPTIM-033）：示范完整键集而非最小集——写真实场景不必回头读 DSL 文档。
+// comment 键即注释（DSL 求值忽略），产物必须通过自身 check（自举保证）。
+// 第二容器/第二规则专示范 ref_exists 引用核查，不需要可整块删除。
 function buildSchemaSkeleton(name) {
   return {
     name,
     version: '1.0.0',
-    comment: `${name} 数据包模版（DSL v1）。comment 键为人类注释，校验与求值均忽略；可配置键以 dtp template check 的报错为准`,
+    comment: `${name} 数据包模版（DSL v1）。comment 键为人类注释，校验与求值均忽略；可配置键以 dtp settings template check 的报错为准`,
     skeleton: [
       {
         id: 'f_items',
@@ -28,17 +30,51 @@ function buildSchemaSkeleton(name) {
         description: '登记条目的容器。dtp init --template 按 skeleton 建包（挂根节点下）；lint 校验容器存在且 id/type/title 与声明一致',
         comment: '容器骨架，可声明多个；可选键：tags',
       },
+      {
+        id: 'f_notes',
+        title: '备注池',
+        type: 'folder',
+        description: '存放引用条目的备注（示范 ref_exists 引用核查）',
+        comment: '第二个容器只为示范「引用其他节点」的规则写法；用不到可删（同时删 note 规则）',
+      },
     ],
     rules: [
       {
         id: 'item',
-        comment: '最小可跑示例规则：match 认领 → 字段校验 → 编号连续性（warn）。可选键：ext_required / ext_arrays / ref_exists / status_evidence 等',
+        comment: [
+          '主规则示范各键用途（不需要的键整行删除即可）：',
+          '· scope.parent：规则生效的父容器 id（也可填另一条规则的 id，表示挂在该规则认领的节点下）',
+          '· match：认领谓词——id 或 title 任一命中即受本规则治理（两者都给更稳；都不给规则永不生效）',
+          '· id_pattern / title_pattern：节点 id 与标题必须匹配的正则',
+          '· content_sections：正文必须包含的段落标题（精确字面匹配，变体标题不算命中）',
+          '· ext_required：必填扩展字段（dtp update <节点> --ext 键=值 补齐）',
+          '· ext_arrays：值必须是 JSON 数组的扩展字段',
+          '· tags_require：必填标签（精确匹配、大小写敏感）',
+          '· status_evidence：置某状态前必须回填的扩展字段（如 approved 前要有 done_evidence）',
+          '· numbering：编号约定（id 与 title 编号不一致、编号空洞为 warn 级告警，不阻断）',
+          '· scope.exclusive（本骨架未启用）：true = 该容器下不允许出现未被任何规则认领的节点（warn 级）',
+        ].join('\n'),
         scope: { parent: 'f_items' },
         match: { id: '^item\\d{3}$', title: '^ITEM-\\d{3}' },
         id_pattern: '^item\\d{3}$',
         title_pattern: '^ITEM-\\d{3} ',
+        content_sections: ['【说明】', '【验收口径】'],
+        ext_required: ['owner'],
+        ext_arrays: ['acceptance'],
         tags_require: ['item'],
+        status_evidence: { approved: ['done_evidence'] },
         numbering: { title_prefix: 'ITEM', id_prefix: 'item', digits: 3 },
+      },
+      {
+        id: 'note',
+        comment: '引用示范：ref_exists 要求 ext 的 item_ref 指向存活节点（标题编号如 ITEM-001，或节点 id）',
+        scope: { parent: 'f_notes' },
+        match: { id: '^note\\d{3}$', title: '^NOTE-\\d{3}' },
+        id_pattern: '^note\\d{3}$',
+        title_pattern: '^NOTE-\\d{3} ',
+        ext_required: ['item_ref'],
+        ref_exists: ['item_ref'],
+        numbering: { title_prefix: 'NOTE', id_prefix: 'note', digits: 3 },
       },
     ],
   }
@@ -52,13 +88,26 @@ function assertTemplateName(name) {
   return name.trim()
 }
 
-function readSchemaFile(file, { action }) {
-  if (!fs.existsSync(file)) {
-    // OPTIM-031：附 cwd 解析后的绝对路径——跨目录调用时用户可直接核对实际指向
-    throw new DtpError('USAGE', `schema 文件不存在：${file}（cwd 解析：${path.resolve(file)}；先用 dtp template new <name> 生成）`)
+// OPTIM-034：两处解析——先按 cwd（常规 CLI 语义），未命中再按包目录回退。
+// 回退的意义：settings show 的 file 字段是「相对包文件目录」的契约路径（如 ../../x.schema.json），
+// 照抄到 bind/check 时若 cwd ≠ 包目录就会指到包外（USAGE）。abs 则是绝对路径（照抄即可）。
+// 两字段语义：file = 包相对、落盘契约；abs = 绝对路径、照抄可用（不落盘）。
+function readSchemaFile(file, ctx) {
+  const load = (absPath) => {
+    const buf = fs.readFileSync(absPath)
+    return { buf, text: buf.toString('utf8'), sha256: createHash('sha256').update(buf).digest('hex'), file, path: absPath }
   }
-  const buf = fs.readFileSync(file)
-  return { buf, text: buf.toString('utf8'), sha256: createHash('sha256').update(buf).digest('hex'), file, action }
+  const cwdPath = path.resolve(file)
+  if (fs.existsSync(cwdPath)) return load(cwdPath)
+  if (ctx?.packetPath && fs.existsSync(ctx.packetPath)) {
+    const pktPath = resolveSchemaFile(ctx.packetPath, file)
+    if (fs.existsSync(pktPath)) return load(pktPath)
+  }
+  const pktHint = ctx?.packetPath && fs.existsSync(ctx.packetPath) ? `；包目录解析：${resolveSchemaFile(ctx.packetPath, file)}` : ''
+  throw new DtpError(
+    'USAGE',
+    `schema 文件不存在：${file}（cwd 解析：${cwdPath}${pktHint}；先用 dtp settings template new <name> 生成）`
+  )
 }
 
 function runNew(ctx) {
@@ -77,13 +126,13 @@ function runNew(ctx) {
   fs.writeFileSync(outFile, JSON.stringify(schema, null, 2) + '\n', 'utf8')
   ctx.out.ok({ schema_file: outFile, name: schema.name, version: schema.version }, () => {
     console.log(`已生成模版 schema → ${outFile}`)
-    console.log(color.dim(`下一步：编辑规则 → dtp template check ${outFile} 自检 → dtp init <包名> --template ${outFile} 建包`))
+    console.log(color.dim(`下一步：编辑规则 → dtp settings template check ${outFile} 自检 → dtp init <包名> --template ${outFile} 建包`))
   })
 }
 
 function runCheck(ctx) {
   if (!ctx.args.target) throw new DtpError('USAGE', 'template check 需要 <schema 文件路径>')
-  const { text, file } = readSchemaFile(ctx.args.target, { action: 'check' })
+  const { text, file } = readSchemaFile(ctx.args.target, ctx)
   const problems = checkSchema(text)
   const ok = problems.length === 0
   let summary = ''
@@ -123,13 +172,29 @@ function assertEnforceable(packet, packetPath, schemaFile) {
   }
   const errors = (captured?.violations ?? []).filter((v) => v.severity === 'error')
   if (captured?.ok === false && errors.length) {
+    // 提示增强（不改拦截语义）：附受影响节点清单（id/标题），省去「再跑一次 lint 才知道是谁」
     throw new DtpError(
       'SCHEMA_VIOLATION',
-      `拒绝开启强制校验：当前包对该 schema 存在 ${errors.length} 项 error 级违规（先修数据：dtp lint --packet ${packetPath} --schema ${schemaFile}）`,
+      `拒绝开启强制校验：当前包对该 schema 存在 ${errors.length} 项 error 级违规（先修数据：dtp lint --packet ${packetPath} --schema ${schemaFile}）${affectedNodesText(packet, errors)}`,
       { violations: errors }
     )
   }
   return captured
+}
+
+// 受影响节点清单：按违规明细去重取 id/标题（上限 10 条，超出以「等 N 个」收尾）。
+// 只列带 node_id 的违规——容器级缺失（skeleton.missing）无节点 id 不进清单但计入违规条数
+// （026 复验确认的合理语义，已在 README/SKILL 点明，避免误报为矛盾）
+function affectedNodesText(packet, errors) {
+  const ids = [...new Set(errors.map((v) => v.node_id).filter(Boolean))]
+  if (!ids.length) return ''
+  const shown = ids.slice(0, 10)
+  const parts = shown.map((id) => {
+    const n = packet.nodes.get(id)
+    return n ? `${id}「${n.title}」` : id
+  })
+  const more = ids.length > shown.length ? ` 等 ${ids.length} 个` : ''
+  return `\n受影响节点（${ids.length}）：${parts.join('、')}${more}`
 }
 
 function runBind(ctx) {
@@ -139,7 +204,7 @@ function runBind(ctx) {
   const off = ctx.opts['no-enforce'] === true
   if (on && off) throw new DtpError('USAGE', '--enforce 与 --no-enforce 互斥')
   const enforceFlag = on ? true : off ? false : null
-  const { text, sha256, file } = readSchemaFile(ctx.args.target, { action: 'bind' })
+  const { text, sha256, path: schemaAbs } = readSchemaFile(ctx.args.target, ctx)
   // 无效 schema 拒绝写入（先自检后进锁，坏 schema 不触碰包文件）
   const problems = checkSchema(text)
   if (problems.length) {
@@ -151,10 +216,10 @@ function runBind(ctx) {
     const packet = ctx.load()
     const prev = packet.meta.metadata?.template ?? null
     // 前置门：开启强制前拒绝脏数据（在锁内、写入前——被拒则包零写入）
-    if (enforceFlag === true) assertEnforceable(packet, ctx.packetPath, file)
+    if (enforceFlag === true) assertEnforceable(packet, ctx.packetPath, schemaAbs)
     // file 记相对包文件目录的路径（允许 ../，lint 按包目录解析）；
-    // 包已加载成功，realpath 两侧归一不会 ENOENT
-    template.file = relativeSchemaFile(ctx.packetPath, file)
+    // 以回退解析出的绝对路径换算，跨 cwd 绑定同样得到正确的包相对值（OPTIM-034）
+    template.file = relativeSchemaFile(ctx.packetPath, schemaAbs)
     // 元数据最小化：首绑且未给 flag 不写 enforce 字段；给了 flag 写显式值；未给且已绑则保持
     if (enforceFlag !== null) template.enforce = enforceFlag
     else if (prev?.enforce !== undefined) template.enforce = prev.enforce
@@ -260,22 +325,62 @@ function withoutComment(obj) {
   return out
 }
 
+// settings template unbind：配置态退出路径（OPTIM-035）。语义取舍（append-only 铁律）：
+// ①「解绑」以**新增 packet_meta 行**表达（当前 metadata.template 置 null），绝不改写历史绑定行——
+//    历史行仍完整记录「曾绑定过什么」；
+// ②强制态随绑定一起消失（没有 schema 就没有强制的依据），故 enforce=true 时要求显式 --force 确认，
+//    避免静默关掉保护；只想关强制不解绑则走 bind --no-enforce。
+// 换绑不新增命令：再次 bind 即换绑（rebound=true，同一 append-only 路径）。
+function runUnbind(ctx) {
+  if (ctx.args.target !== undefined) {
+    throw new DtpError('USAGE', 'settings template unbind 不接受位置参数（解绑按包执行：用 --packet 指定）')
+  }
+  const removed = ctx.withLock(() => {
+    const packet = ctx.load()
+    const prev = packet.meta.metadata?.template ?? null
+    if (!prev) {
+      throw new DtpError('USAGE', `包未绑定模版，无可解绑：${ctx.packetPath}（绑定：dtp settings template bind <schema> --packet <包>）`)
+    }
+    if (prev.enforce === true && ctx.opts.force !== true) {
+      throw new DtpError(
+        'USAGE',
+        '该包开启了强制校验（enforce=true），解绑会一并解除强制；确认请加 --force，或先 dtp settings template bind --no-enforce 只关强制'
+      )
+    }
+    packet.meta.metadata ??= {}
+    packet.meta.metadata.template = null
+    packet.touchMeta() // 追加 packet_meta 行，不改写历史（append-only）
+    packet.save()
+    return prev
+  })
+  ctx.out.ok(
+    { packet: ctx.packetPath, unbound: { name: removed.name, version: removed.version }, enforce_cleared: removed.enforce === true },
+    () => {
+      console.log(`已解绑：${removed.name} v${removed.version} → ${ctx.packetPath}（append-only：新增 packet_meta 行，历史绑定行未改写）`)
+      if (removed.enforce === true) console.log(color.yellow('⚠') + ' 强制校验已随绑定一并解除（无 schema 即无强制依据）')
+      console.log(color.dim('重新绑定：dtp settings template bind <schema> --packet <包>（绑定不同 schema 即换绑）'))
+    }
+  )
+}
+
 export const command = {
   name: 'settings',
-  summary: '配置态：settings template new/check/bind（模版收归）+ settings show（绑定与规则只读聚合）',
+  summary: '配置态：settings template new/check/bind/unbind（模版收归）+ settings show（绑定与规则只读聚合）',
   args: [
     { name: 'topic', required: true, desc: 'template | show' },
-    { name: 'action', required: false, desc: 'topic=template 时：new | check | bind；topic=show 时不接受' },
+    { name: 'action', required: false, desc: 'topic=template 时：new | check | bind | unbind；topic=show 时不接受' },
     { name: 'target', required: false, desc: 'new：模版名；check/bind：schema 文件路径' },
   ],
   options: {
     out: { arg: 'path', desc: '（仅 settings template new）schema 输出路径，默认 ./<模版名>.schema.json' },
     enforce: { desc: '（仅 settings template bind）开启写路径强制校验（需包当前无 error 级违规）' },
     'no-enforce': { desc: '（仅 settings template bind）显式关闭强制校验；两者都不给则保持现值' },
+    force: { short: 'f', desc: '（仅 settings template unbind）确认：enforce 态解绑会一并解除强制校验' },
   },
   example: [
     'dtp settings template new weekly && dtp settings template check weekly.schema.json',
     'dtp settings template bind ./weekly.schema.json --packet ./周报包.dtp',
+    'dtp settings template unbind --packet ./周报包.dtp   # 解绑（enforce 态需 --force）',
     'dtp settings show --packet ./周报包.dtp',
   ],
   run(ctx) {
@@ -285,13 +390,14 @@ export const command = {
       throw new DtpError('USAGE', `未知 topic "${topic}"（settings 可用：${SETTINGS_TOPICS.join(' | ')}）`)
     }
     const action = ctx.args.action
-    if (!action) throw new DtpError('USAGE', 'settings template 需要 <action>（new | check | bind）')
+    if (!action) throw new DtpError('USAGE', 'settings template 需要 <action>（new | check | bind | unbind）')
     // 文案与旧 template.js 逐字一致：转发壳依赖同一报错保证 stdout 等价
     if (!TEMPLATE_ACTIONS.includes(action)) {
       throw new DtpError('USAGE', `未知子命令 "${action}"（template 可用：${TEMPLATE_ACTIONS.join(' | ')}）`)
     }
     if (action === 'new') return runNew(ctx)
     if (action === 'check') return runCheck(ctx)
+    if (action === 'unbind') return runUnbind(ctx)
     return runBind(ctx)
   },
 }

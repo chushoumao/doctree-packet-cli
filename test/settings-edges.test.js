@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
-import { tmpdir, runDtp, runJson, makePacket } from './helpers.js'
+import { tmpdir, runDtp, runJson, makePacket, ROOT } from './helpers.js'
 
 const j = (args, opts) => runJson(args, opts).data
 
@@ -287,4 +287,151 @@ test('OPTIM-031：check 缺文件报错附 cwd 解析绝对路径；init --templ
   assert.equal(r.template.abs, fs.realpathSync(path.join(dir, 'w.schema.json')))
   // abs 是响应派生字段，不进 append-only metadata（与 bind 记录形状一致）
   assert.ok(!('abs' in JSON.parse(fs.readFileSync(path.join(dir, 'p.dtp'), 'utf8').split('\n').find((l) => l.includes('packet_meta')) ?? '{}')))
+})
+
+// ---------- OPTIM-034：settings show 的 file 照抄可达（跨 cwd）+ OPTIM-032 旧命令文案清除 ----------
+
+test('OPTIM-034：schema 存包外时 file 为包相对路径，照抄 check/bind 跨 cwd 仍可达', () => {
+  const outer = tmpdir('p34-')
+  const inner = path.join(outer, 'a', 'b')
+  fs.mkdirSync(inner, { recursive: true })
+  const schemaFile = path.join(outer, 'ops.schema.json')
+  const pkt = path.join(inner, 'p.dtp')
+  fs.writeFileSync(schemaFile, MIN_SCHEMA)
+  j(['init', '变更包', '--packet', pkt, '--id', 'n_root'], { cwd: outer })
+  j(['settings', 'template', 'bind', path.join(outer, 'ops.schema.json'), '--packet', pkt], { cwd: outer })
+
+  const d = j(['settings', 'show', '--packet', pkt], { cwd: outer })
+  // file 是包相对契约字段（跨到包外即 ../.. 形态）；abs 是照抄可用的绝对路径
+  assert.equal(d.schema.file, '../../ops.schema.json')
+  assert.ok(path.isAbsolute(d.schema.abs))
+
+  // 异 cwd 照抄 file：按包目录回退解析（修复前指到 cwd 之外 → USAGE exit 2）
+  const other = tmpdir('p34cwd-')
+  const chk = j(['settings', 'template', 'check', d.schema.file, '--packet', pkt], { cwd: other })
+  assert.equal(chk.ok, true, JSON.stringify(chk))
+  assert.equal(chk.problems.length, 0)
+  const bind = j(['settings', 'template', 'bind', d.schema.file, '--packet', pkt], { cwd: other })
+  assert.equal(bind.ok, true, JSON.stringify(bind))
+  assert.equal(bind.template.file, '../../ops.schema.json', '回退解析后包相对值不变')
+
+  // 两处都找不到时报错同时给出 cwd 与包目录解析结果
+  const miss = j(['settings', 'template', 'check', '../../nope.json', '--packet', pkt], { cwd: other })
+  assert.equal(miss.error.code, 'USAGE')
+  assert.match(miss.error.message, /cwd 解析：/)
+  assert.match(miss.error.message, /包目录解析：/)
+})
+
+test('OPTIM-032：src 内提示文案无旧命令名残留（dtp template 仅存于弃用别名文件）', () => {
+  const files = ['src/template.js', 'src/commands/settings.js', 'src/commands/lint.js', 'src/commands/init.js', 'src/enforce.js']
+  for (const f of files) {
+    const text = fs.readFileSync(path.join(ROOT, f), 'utf8')
+    // 只查用户可见文案行；以 // 开头的架构/历史注释（如别名机制说明）不在清理范围
+    const leftovers = text
+      .split('\n')
+      .filter((l) => l.includes('dtp template') && !l.includes('dtp settings template') && !l.trimStart().startsWith('//'))
+    assert.deepEqual(leftovers, [], `${f} 残留旧命令名：${leftovers.join(' | ')}`)
+  }
+  // 弃用别名文件保留自身用法示例（别名依然可用，标注本身不动）
+  const alias = fs.readFileSync(path.join(ROOT, 'src/commands/template.js'), 'utf8')
+  assert.ok(alias.includes('dtp template new weekly'), '别名示例保留')
+})
+
+// ---------- OPTIM-035：settings template unbind（配置态退出路径）+ 前置门受影响节点清单 ----------
+
+test('OPTIM-035：unbind 成功（非 enforce）→ template null、append-only 留痕、包仍 verify 通过', () => {
+  const dir = tmpdir('ub-')
+  const pkt = path.join(dir, 'p.dtp')
+  makePacket(pkt, { name: '解绑包' })
+  fs.writeFileSync(path.join(dir, 'w.schema.json'), MIN_SCHEMA)
+  j(['settings', 'template', 'bind', 'w.schema.json', '--packet', pkt], { cwd: dir })
+  const r = j(['settings', 'template', 'unbind', '--packet', pkt], { cwd: dir })
+  assert.equal(r.ok, true, JSON.stringify(r))
+  assert.equal(r.unbound.name, 'weekly')
+  assert.equal(r.enforce_cleared, false)
+  // 解绑以新增 packet_meta 行表达：当前 metadata.template 为 null，历史绑定行未改写
+  const d = j(['settings', 'show', '--packet', pkt], { cwd: dir })
+  assert.equal(d.template, null)
+  assert.equal(d.schema, null)
+  assert.equal(runDtp(['verify', '--packet', pkt], { cwd: dir }).status, 0)
+})
+
+test('OPTIM-035：未绑定包 unbind → USAGE exit 2（不静默成功）；unbind 带位置参数亦 USAGE', () => {
+  const dir = tmpdir('ub2-')
+  const pkt = path.join(dir, 'p.dtp')
+  makePacket(pkt, { name: '空绑包' })
+  const r = j(['settings', 'template', 'unbind', '--packet', pkt], { cwd: dir })
+  assert.equal(r.error.code, 'USAGE')
+  assert.match(r.error.message, /未绑定模版/)
+  assert.equal(runDtp(['settings', 'template', 'unbind', '--packet', pkt], { cwd: dir }).status, 2)
+  const bad = j(['settings', 'template', 'unbind', 'x', '--packet', pkt], { cwd: dir })
+  assert.equal(bad.error.code, 'USAGE')
+})
+
+test('OPTIM-035：enforce 态解绑需 --force（强制随绑定一并解除）；--force 后生效', () => {
+  const dir = tmpdir('ub3-')
+  const pkt = path.join(dir, 'p.dtp')
+  fs.writeFileSync(path.join(dir, 'w.schema.json'), MIN_SCHEMA)
+  j(['init', '强制包', '--packet', pkt, '--template', 'w.schema.json'], { cwd: dir })
+  j(['settings', 'template', 'bind', 'w.schema.json', '--packet', pkt, '--enforce'], { cwd: dir })
+  assert.equal(j(['settings', 'show', '--packet', pkt], { cwd: dir }).template.enforce, true)
+
+  // 未确认 → USAGE exit 2（避免静默关掉保护）
+  const blocked = j(['settings', 'template', 'unbind', '--packet', pkt], { cwd: dir })
+  assert.equal(blocked.error.code, 'USAGE')
+  assert.match(blocked.error.message, /一并解除强制/)
+  assert.equal(runDtp(['settings', 'template', 'unbind', '--packet', pkt], { cwd: dir }).status, 2)
+
+  // 确认后解绑，强制一并解除
+  const ok = j(['settings', 'template', 'unbind', '--packet', pkt, '--force'], { cwd: dir })
+  assert.equal(ok.ok, true)
+  assert.equal(ok.enforce_cleared, true)
+  assert.equal(j(['settings', 'show', '--packet', pkt], { cwd: dir }).template, null)
+})
+
+test('前置门被拒提示附受影响节点清单（id/标题），拦截语义不变', () => {
+  const dir = tmpdir('gate-')
+  const pkt = path.join(dir, 'p.dtp')
+  fs.writeFileSync(path.join(dir, 'w.schema.json'), MIN_SCHEMA)
+  j(['init', '脏包', '--packet', pkt, '--template', 'w.schema.json'], { cwd: dir })
+  // 认领但缺必填标签 → error 级违规（前置门必然拒绝）
+  j(['add', 'f_items', '--id', 'item001', '--title', 'ITEM-001 缺标签', '--packet', pkt], { cwd: dir })
+  j(['add', 'f_items', '--id', 'item002', '--title', 'ITEM-002 也缺', '--packet', pkt], { cwd: dir })
+  const r = j(['settings', 'template', 'bind', 'w.schema.json', '--packet', pkt, '--enforce'], { cwd: dir })
+  assert.equal(r.ok, false)
+  assert.equal(r.error.code, 'SCHEMA_VIOLATION', '拦截语义不变')
+  assert.match(r.error.message, /受影响节点（2）/)
+  assert.match(r.error.message, /item001「ITEM-001 缺标签」/)
+  assert.match(r.error.message, /item002「ITEM-002 也缺」/)
+  // 违规明细照旧随 error 携带（提示增强不改形状）
+  assert.ok(Array.isArray(r.error.violations))
+  assert.equal(runDtp(['settings', 'template', 'bind', 'w.schema.json', '--packet', pkt, '--enforce'], { cwd: dir }).status, 1)
+})
+
+// ---------- OPTIM-033：template new 骨架示范完整键集 ----------
+
+test('OPTIM-033：new 骨架示范完整键集（约束键各至少一处）+ 每键用途注释，自举通过', () => {
+  const dir = tmpdir('sk-')
+  const r = j(['settings', 'template', 'new', 'weekly'], { cwd: dir })
+  assert.equal(r.ok, true)
+  const schema = JSON.parse(fs.readFileSync(path.join(dir, 'weekly.schema.json'), 'utf8'))
+  const keys = new Set(Object.keys(schema.rules[0]))
+  for (const k of ['scope', 'match', 'id_pattern', 'title_pattern', 'content_sections', 'ext_required', 'ext_arrays', 'tags_require', 'status_evidence', 'numbering']) {
+    assert.ok(keys.has(k), `骨架 item 规则应示范 ${k}`)
+  }
+  // 第二规则示范 ref_exists 引用核查
+  const note = schema.rules.find((x) => x.id === 'note')
+  assert.ok(note, 'note 规则在（ref_exists 示范）')
+  assert.ok(Array.isArray(note.ref_exists))
+  // 每键用途写进 comment（agent/用户不必回头读 DSL 文档）
+  for (const kw of ['scope.parent', 'match', 'content_sections', 'ext_required', 'ext_arrays', 'tags_require', 'status_evidence', 'numbering', 'scope.exclusive']) {
+    assert.ok(schema.rules[0].comment.includes(kw), `comment 应说明 ${kw}`)
+  }
+  // 自举：产物过自身 check；用骨架建包 lint 也应通过
+  const c = j(['settings', 'template', 'check', 'weekly.schema.json'], { cwd: dir })
+  assert.equal(c.ok, true)
+  const init = j(['init', '骨架包', '--packet', path.join(dir, 'p.dtp'), '--template', 'weekly.schema.json'], { cwd: dir })
+  assert.equal(init.ok, true, JSON.stringify(init))
+  const lint = j(['lint', '--packet', 'p.dtp'], { cwd: dir })
+  assert.equal(lint.ok, true, JSON.stringify(lint.violations))
 })

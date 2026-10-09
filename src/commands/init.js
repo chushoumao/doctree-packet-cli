@@ -85,7 +85,7 @@ export const command = {
       const text = fs.readFileSync(schemaFile, 'utf8')
       const problems = checkSchema(text)
       if (problems.length) {
-        throw new DtpError('SCHEMA_INVALID', `schema 未通过自检（${problems.length} 处），拒绝建包。首条：${problems[0]}（先运行 dtp template check ${schemaFile}）`)
+        throw new DtpError('SCHEMA_INVALID', `schema 未通过自检（${problems.length} 处），拒绝建包。首条：${problems[0]}（先运行 dtp settings template check ${schemaFile}）`)
       }
       schema = parseSchema(text)
       if (builtinRel) {
